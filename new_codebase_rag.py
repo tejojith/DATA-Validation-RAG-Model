@@ -31,12 +31,10 @@ class CodebaseRAG:
         self.target_db_config = None
 
     def configure_databases(self, source_config: Dict, target_config: Optional[Dict] = None):
-        """Configure source and target database connections"""
         self.source_db_config = source_config
         self.target_db_config = target_config
 
     def extract_schema_info(self, connection_config: Dict) -> List[Dict]:
-        """Extract schema information from database"""
         schema_info = []
         
         with MySQLConnection(**connection_config) as conn:
@@ -68,7 +66,6 @@ class CodebaseRAG:
         return schema_info
 
     def profile_data(self, connection_config: Dict) -> List[Dict]:
-        """Generate data profiles for each table"""
         profile_info = []
         
         with MySQLConnection(**connection_config) as conn:
@@ -225,7 +222,6 @@ class CodebaseRAG:
         self.vector_db.save_local(self.db_path)
 
     def classify_query(self, query: str) -> str:
-        """Classify the query into a validation category"""
         query = query.lower()
         
         if "compare" in query or "source vs target" in query or "etl" in query:
@@ -250,24 +246,6 @@ class CodebaseRAG:
             return "mistral"
 
 
-    def handle_output(self, answer: str, query_type: str):
-        """Handle the output based on query type and user preference"""
-        print("\n💡 Output Options:")
-        print("1. View in terminal")
-        print("2. Save as script")
-        print("3. Save as report")
-        print("4. Save as both script and report")
-        
-        choice = input("Select output option (1-4): ").strip()
-        
-        if choice == "1":
-            return
-            
-        if choice in ["2", "4"]:
-            self.save_to_file(answer, "script", query_type)
-            
-        if choice in ["3", "4"]:
-            self.save_to_file(answer, "report", query_type)
 
     def save_to_file(self, answer: str, output_type: str, query_type: str):
         if output_type == "script":
@@ -370,3 +348,23 @@ class CodebaseRAG:
             print("\n🧠 Answer:\n", answer)
             
             self.handle_output(answer, query_type)
+
+
+    def handle_output(self, answer: str, query_type: str):
+        """Handle the output based on query type and user preference"""
+        print("\n💡 Output Options:")
+        print("1. View in terminal")
+        print("2. Save as script")
+        print("3. Save as report")
+        print("4. Save as both script and report")
+        
+        choice = input("Select output option (1-4): ").strip()
+        
+        if choice == "1":
+            return
+            
+        if choice in ["2", "4"]:
+            self.save_to_file(answer, "script", query_type)
+            
+        if choice in ["3", "4"]:
+            self.save_to_file(answer, "report", query_type)

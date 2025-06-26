@@ -5,7 +5,6 @@ from typing import Optional, List, Dict, Union
 
 class MySQLConnection:
     def __init__(self, host: str, user: str, password: str, database: str):
-        """Initialize MySQL connection parameters"""
         self.mysql_config = {
             'host': host,
             'user': user,
@@ -13,15 +12,6 @@ class MySQLConnection:
             'database': database
         }
         self.connection = None
-
-    def __enter__(self):
-        """Support for context manager protocol"""
-        self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Support for context manager protocol"""
-        self.close()
 
     def connect(self) -> bool:
         if self.connection:

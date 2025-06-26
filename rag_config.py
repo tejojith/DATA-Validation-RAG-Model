@@ -2,7 +2,6 @@ import os
 
 def check_for_file():
     def is_faiss_folder(path):
-        """Check if a folder contains FAISS files"""
         if not os.path.isdir(path):
             return False
         return os.path.exists(os.path.join(path, "index.faiss")) and os.path.exists(os.path.join(path, "index.pkl"))
