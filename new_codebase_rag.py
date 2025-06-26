@@ -235,8 +235,7 @@ class CodebaseRAG:
         else:
             return "completeness"  # default to completeness
 
-    def select_llm_for_query(self, query: str) -> str:
-        """Select appropriate LLM based on query content"""
+    def select_llm(self, query: str) -> str:
         query = query.lower()
         if "code" in query or "sql" in query or "generate" in query:
             return "codellama:7b"
@@ -284,7 +283,6 @@ class CodebaseRAG:
         print(f"✅ Saved {output_type} to {output_file}")
 
     def load_vector_db(self):
-        """Load the vector database from disk"""
         self.vector_db = FAISS.load_local(
             folder_path=self.db_path,
             embeddings=self.embedding,
@@ -292,7 +290,6 @@ class CodebaseRAG:
         )
 
     def query_rag_system(self):
-        """Query the RAG system with enhanced validation capabilities"""
         if not self.vector_db:
             self.load_vector_db()
             
@@ -303,9 +300,9 @@ class CodebaseRAG:
             if query.lower() in ["exit", "quit"]:
                 break
 
-            # Classify query and select appropriate LLM
+            # Classify query and select appropriate LLMs
             query_type = self.classify_query(query)
-            llm_model = self.select_llm_for_query(query)
+            llm_model = self.select_llm(query)
             
             llm = OllamaLLM(
                 model=f"{llm_model}",
@@ -351,7 +348,6 @@ class CodebaseRAG:
 
 
     def handle_output(self, answer: str, query_type: str):
-        """Handle the output based on query type and user preference"""
         print("\n💡 Output Options:")
         print("1. View in terminal")
         print("2. Save as script")

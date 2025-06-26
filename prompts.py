@@ -7,6 +7,7 @@ PROMPT_TEMPLATES = {
     - Missing required fields
     - Empty strings where data should exist
     - Default values that might indicate missing data
+    - give the output in python to be execute in MySQL
     
     Database Context: {context}
     
@@ -19,7 +20,6 @@ PROMPT_TEMPLATES = {
     You are a Data Accuracy Validation Expert. Generate tests to check:
     - Data type conformity
     - Value ranges
-    - Business rule compliance
     - Referential integrity
     
     Database Context: {context}

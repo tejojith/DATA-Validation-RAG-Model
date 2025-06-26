@@ -1,6 +1,4 @@
-To validate the data in the `employees` table, you can create a series of tests to check for data type conformity, value ranges, business rule compliance, and referential integrity. Here's an example Python script using the `pandas` library to perform these tests:
 
-```python
 import pandas as pd
 from datetime import datetime
 
@@ -37,6 +35,3 @@ test_data_type_conformity()
 test_value_ranges()
 test_business_rule_compliance()
 test_referential_integrity()
-```
-
-This script will print an error message if any of the tests fail. You can run this script periodically to ensure data accuracy in your `employees` table.
