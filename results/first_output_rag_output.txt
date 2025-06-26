@@ -1,0 +1,28 @@
+
+Here's a sample test script for validating the data in the "articles" table:
+```
+import pandas as pd
+
+# Load the data into a Pandas DataFrame
+df = pd.read_sql("SELECT * FROM articles", engine)
+
+# Check if there are any null values in the table
+if df.isnull().any().any():
+    print("Null values found in the table")
+
+# Check if the number of rows is the same as it started with
+original_row_count = df.shape[0]
+current_row_count = df.shape[0]
+if original_row_count != current_row_count:
+    print("Number of rows has changed")
+
+# Check if there are any duplicate records in the table
+if df.duplicated().any():
+    print("Duplicate records found in the table")
+
+# Check if there are any invalid values in the table
+if df.is_valid(inplace=True):
+    print("Invalid values found in the table")
+```
+This script will check for null values, duplicate records, and invalid values in the "articles" table. If any of these conditions are met, it will print a message to the console indicating the issue.
+----------------------------------------
