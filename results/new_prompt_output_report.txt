@@ -1,0 +1,112 @@
+ ```python
+import pymysql
+import pandas as pd
+import re
+import logging
+from datetime import datetime
+
+def validate_data_types(connection, table_name, expected_types):
+    cursor = connection.cursor()
+    columns = [desc[0] for desc in cursor.description if desc[1] != 'generated']  # Exclude generated columns
+
+    for column in columns:
+        query = f"SELECT COUNT(*) FROM {table_name} WHERE TYPE({column}) NOT IN ({', '.join([repr(t) for t in expected_types[column]])})"
+        cursor.execute(query)
+        if cursor.fetchone()[0] > 0:
+            logging.error(f"Invalid data type found in column {column} of table {table_name}")
+            sys.exit(1)
+
+def validate_ranges(connection, table_name, column_ranges):
+    cursor = connection.cursor()
+    columns = [desc[0] for desc in cursor.description if desc[1] != 'generated']  # Exclude generated columns
+
+    for column in columns:
+        min_val, max_val = column_ranges[column]
+        query = f"SELECT MIN({column}), MAX({column}) FROM {table_name}"
+        cursor.execute(query)
+        min_value, max_value = cursor.fetchone()
+
+        if min_val is not None and min_value < min_val:
+            logging.error(f"Minimum value violation in column {column} of table {table_name}. Expected minimum: {min_val}, found: {min_value}")
+            sys.exit(1)
+
+        if max_val is not None and max_value > max_val:
+            logging.error(f"Maximum value violation in column {column} of table {table_name}. Expected maximum: {max_val}, found: {max_value}")
+            sys.exit(1)
+
+def validate_formats(connection, table_name, format_patterns):
+    cursor = connection.cursor()
+    columns = [desc[0] for desc in cursor.description if desc[1] != 'generated']  # Exclude generated columns
+
+    for column in columns:
+        pattern = re.compile(format_patterns[column])
+        query = f"SELECT {column} FROM {table_name}"
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+        for row in rows:
+            value = row[0]
+            if not pattern.match(value):
+                logging.error(f"Invalid format found in column {column} of table {table_name}. Value: {value}")
+                sys.exit(1)
+
+def validate_signup_dates():
+    # Custom function to check signup dates are in the past or equal to current date
+    def is_valid_date(date):
+        try:
+            return datetime.strptime(date, "%Y-%m-%d") >= datetime.now()
+        except ValueError:
+            return False
+
+    # Load data into a DataFrame for easier manipulation
+    df = pd.read_sql_query("SELECT signup_date FROM customers", connection)
+
+    invalid_rows = df[~df['signup_date'].apply(is_valid_date)]
+
+    if not invalid_rows.empty:
+        logging.error("Invalid signup dates found in the customers table.")
+        for index, row in invalid_rows.iterrows():
+            logging.error(f"Row {index}: Invalid signup date: {row['signup_date']}")
+        sys.exit(1)
+
+# Main execution
+if __name__ == "__main__":
+    # Database connection configuration
+    host = 'your_host'
+    user = 'your_user'
+    password = 'your_password'
+    db = 'your_db'
+
+    connection = pymysql.connect(host=host,
+                                 user=user,
+                                 password=password,
+                                 db=db)
+
+    # Define expected data types, value ranges and format patterns
+    data_types = {'id': (str,),
+                  'name': (str,),
+                  'email': (str,),
+                  'signup_date': (str,)}
+
+    column_ranges = {'id': (None, None),
+                     'name': (None, None),
+                     'email': (None, None),
+                     'signup_date': (None, None)}
+
+    format_patterns = {'id': re.compile(r'^[a-zA-Z0-9]{1,50}$'),
+                       'name': re.compile(r'^[a-zA-Z\s]{1,255}$'),
+                       'email': re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
+                       'signup_date': re.compile(r'^\d{4}-\d{2}-\d{2}$')}
+
+    # Validate data types, ranges and formats
+    validate_data_types(connection, 'customers', data_types)
+    validate_ranges(connection, 'customers', column_ranges)
+    validate_formats(connection, 'customers', format_patterns)
+
+    # Validate signup dates (custom function)
+    validate_signup_dates()
+
+    connection.close()
+```
+
+Replace the `your_*` variables with your actual database credentials and run the script to validate data accuracy in the customers table.

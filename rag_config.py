@@ -35,5 +35,5 @@ def check_for_file():
         print("No existing FAISS DB found.")
         DB_PATH = create_new_faiss_dir()
 
-    PROJECT_PATH = "schemas"
-    return PROJECT_PATH, DB_PATH
+    # PROJECT_PATH = "schemas"
+    return DB_PATH

@@ -42,7 +42,7 @@ class MySQLConnection:
             return df
         except Exception as e:
             print(f"--Error extracting data: {e}")
-            return None
+            return pd.DataFrame()
 
     def prepare_documents(self, df, content_column, metadata_columns=None):
         """

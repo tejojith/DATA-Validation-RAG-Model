@@ -12,16 +12,14 @@ from multiprocessing import Pool
 from langchain_community.document_loaders import (TextLoader, PythonLoader, 
                                                         JSONLoader, BSHTMLLoader)
 import time
-from langchain.prompts import PromptTemplate
 from chunking import EnhancedChunker
-from connector_sql import MySQLConnection
+from connect_alchemy import MySQLConnection
 from typing import Dict, List, Optional
 import pandas as pd
 from prompts import PROMPT_TEMPLATES
 
 class CodebaseRAG:
-    def __init__(self, project_path: str, db_path: str):
-        self.project_path = project_path
+    def __init__(self, db_path: str):
         self.db_path = db_path
         self.embed_model = "nomic-embed-text"  # or mxbai-embed-large for code
         self.embedding = OllamaEmbeddings(model=self.embed_model)
@@ -34,90 +32,107 @@ class CodebaseRAG:
         self.source_db_config = source_config
         self.target_db_config = target_config
 
+    def extract_database_into(self, database: Dict):
+        return database
+
     def extract_schema_info(self, connection_config: Dict) -> List[Dict]:
+        conn = MySQLConnection(**connection_config)
         schema_info = []
         
-        with MySQLConnection(**connection_config) as conn:
+        try:
             # Get tables
             tables_df = conn.execute_query("SHOW TABLES")
-            if tables_df is None:
-                return schema_info
-                
-            for _, row in tables_df.iterrows():
-                table_name = row.iloc[0]
+            print("Tables found:", tables_df)
+            
+            for idx, row in tables_df.iterrows():
+                table_name = row.iloc[0]  # Get first column value
                 
                 # Get columns
                 columns_df = conn.execute_query(f"DESCRIBE {table_name}")
+                columns = columns_df.to_dict('records')  # Convert to list of dicts
                 
                 # Get foreign keys
                 fks_df = conn.execute_query(f"""
-                    SELECT COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-                    FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-                    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{table_name}' 
-                    AND REFERENCED_TABLE_NAME IS NOT NULL
+                    SELECT 
+                        COLUMN_NAME, 
+                        REFERENCED_TABLE_NAME, 
+                        REFERENCED_COLUMN_NAME
+                    FROM 
+                        INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                    WHERE 
+                        TABLE_NAME = '{table_name}' 
+                        AND REFERENCED_TABLE_NAME IS NOT NULL
                 """)
+                fks = fks_df.to_dict('records') if not fks_df.empty else []
                 
                 schema_info.append({
                     'table_name': table_name,
-                    'columns': columns_df.to_dict('records') if columns_df is not None else [],
-                    'foreign_keys': fks_df.to_dict('records') if fks_df is not None else []
+                    'columns': columns,
+                    'foreign_keys': fks
                 })
-                    
+        finally:
+            conn.close()
+                
         return schema_info
 
     def profile_data(self, connection_config: Dict) -> List[Dict]:
+        conn = MySQLConnection(**connection_config)
         profile_info = []
         
-        with MySQLConnection(**connection_config) as conn:
+        try:
             tables_df = conn.execute_query("SHOW TABLES")
-            if tables_df is None:
-                return profile_info
-                
-            for _, table_row in tables_df.iterrows():
-                table_name = table_row.iloc[0]
+            
+            for idx, row in tables_df.iterrows():
+                table_name = row.iloc[0]  # Get first column value
                 
                 # Basic stats
-                count_df = conn.execute_query(f"SELECT COUNT(*) as cnt FROM {table_name}")
-                row_count = count_df.iloc[0]['cnt'] if count_df is not None else 0
+                count_df = conn.execute_query(f"SELECT COUNT(*) as row_count FROM {table_name}")
+                row_count = count_df.iloc[0]['row_count']
                 
                 # Column profiles
                 columns_df = conn.execute_query(f"DESCRIBE {table_name}")
                 column_profiles = []
                 
-                if columns_df is not None:
-                    for _, col_row in columns_df.iterrows():
-                        col_name = col_row['Field']
-                        col_type = col_row['Type']
-                        
-                        # Get sample values and NULL count
-                        stats_df = conn.execute_query(f"""
-                            SELECT 
-                                SUM(CASE WHEN `{col_name}` IS NULL THEN 1 ELSE 0 END) as null_count,
-                                COUNT(DISTINCT `{col_name}`) as distinct_count
-                            FROM {table_name}
-                        """)
-                        
-                        sample_df = conn.execute_query(f"""
-                            SELECT `{col_name}` 
-                            FROM {table_name} 
-                            WHERE `{col_name}` IS NOT NULL
-                            LIMIT 5
-                        """)
-                        
-                        column_profiles.append({
-                            'name': col_name,
-                            'type': col_type,
-                            'null_count': stats_df.iloc[0]['null_count'] if stats_df is not None else 0,
-                            'distinct_count': stats_df.iloc[0]['distinct_count'] if stats_df is not None else 0,
-                            'sample_values': sample_df[col_name].tolist() if sample_df is not None else []
-                        })
+                for _, col_row in columns_df.iterrows():
+                    col_name = col_row['Field']
+                    col_type = col_row['Type']
+                    
+                    # Get sample values and NULL count
+                    stats_df = conn.execute_query(f"""
+                        SELECT 
+                            SUM(CASE WHEN `{col_name}` IS NULL THEN 1 ELSE 0 END) as null_count,
+                            COUNT(DISTINCT `{col_name}`) as distinct_count
+                        FROM {table_name}
+                    """)
+                    
+                    null_count = stats_df.iloc[0]['null_count']
+                    distinct_count = stats_df.iloc[0]['distinct_count']
+                    
+                    sample_df = conn.execute_query(f"""
+                        SELECT `{col_name}` 
+                        FROM {table_name} 
+                        WHERE `{col_name}` IS NOT NULL
+                        LIMIT 5
+                    """)
+                    
+                    sample_values = sample_df[col_name].tolist() if not sample_df.empty else []
+                    
+                    column_profiles.append({
+                        'name': col_name,
+                        'type': col_type,
+                        'null_count': null_count,
+                        'distinct_count': distinct_count,
+                        'sample_values': sample_values
+                    })
                 
                 profile_info.append({
                     'table_name': table_name,
                     'row_count': row_count,
                     'columns': column_profiles
                 })
-                    
+        finally:
+            conn.close()
+                
         return profile_info
 
     def create_embeddings_and_store(self):
@@ -125,6 +140,7 @@ class CodebaseRAG:
             raise ValueError("Source database configuration is required")
             
         # Extract schema and profile data
+        
         schema_info = self.extract_schema_info(self.source_db_config)
         profile_info = self.profile_data(self.source_db_config)
         
@@ -207,6 +223,21 @@ class CodebaseRAG:
                         'source': 'target_db'
                     }
                 ))
+        database_info = self.extract_database_into(self.source_db_config)
+        documents.append(Document(
+                    page_content="Source Database Information:\n" + str(database_info),
+                    metadata={
+                        'source': 'source_db'
+                    }
+        ))
+
+        database_info = self.extract_database_into(self.target_db_config)
+        documents.append(Document(
+                    page_content="Target Database Information:\n" + str(database_info),
+                    metadata={
+                        'source': 'target_db'
+                    }
+        ))
         
         # Chunk documents using enhanced chunker
         chunks = self.chunker.smart_chunk_documents(documents)
@@ -249,7 +280,7 @@ class CodebaseRAG:
     def save_to_file(self, answer: str, output_type: str, query_type: str):
         if output_type == "script":
             valid_formats = ["sql", "py", "java", "sh"]
-            default_ext = "sql" if query_type in ["completeness", "accuracy"] else "py"
+            default_ext = "py" 
         else:  # report
             valid_formats = ["txt", "md", "html"]
             default_ext = "md"
@@ -270,6 +301,8 @@ class CodebaseRAG:
         
         # Extract code blocks if saving as script
         if output_type == "script":
+            if output_format == "py":
+                output_format = "python"
             if f'```{output_format}' in answer:
                 content = answer.split(f'```{output_format}')[1].split('```')[0].strip()
             else:
@@ -338,9 +371,14 @@ class CodebaseRAG:
                         "prompt": PROMPT_TEMPLATES[query_type]
                     }
                 )
+                start_time = time.time()
                 result = qa(query)
 
+            end_time = time.time()
+            print(f"⏱️ Query processed in {end_time - start_time:.2f} seconds")
             answer = result["result"]
+
+
             
             print("\n🧠 Answer:\n", answer)
             
@@ -364,3 +402,25 @@ class CodebaseRAG:
             
         if choice in ["3", "4"]:
             self.save_to_file(answer, "report", query_type)
+
+
+# if __name__ == "__main__":
+
+#     # Configure databases
+#     source_config = {
+#         'host': 'localhost',
+#         'user': 'root',
+#         'password': 'password',
+#         'database': 'source_db'
+#     }
+
+#     target_config = {
+#         'host': 'localhost',
+#         'user': 'root',
+#         'password': 'password',
+#         'database': 'target_db'
+#     }
+#     rag = CodebaseRAG("schemas",r"D:\DATA Validation\vector_db3")
+#     rag.configure_databases(source_config, target_config)
+
+#     rag.extract_schema_info(source_config)
