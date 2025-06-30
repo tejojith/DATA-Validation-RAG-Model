@@ -1,28 +1,22 @@
--- Data Type Conformity
-SELECT id, name, department, salary, hired_date
-FROM employees
-WHERE
-    (id NOT IN (SELECT DISTINCT id FROM employees)) OR
-    (name NOT LIKE '%[^a-zA-Z0-9\s]%') OR
-    (department NOT LIKE '%[^a-zA-Z0-9\s]%') OR
-    (salary NOT REGEXP '^-?[0-9]+(\.[0-9]{1,2})?$') OR
-    (hired_date IS NULL) OR
-    (hired_date NOT DATE);
+-- Test data type conformity
+SELECT 
+    COUNT(*) AS num_rows,
+    SUM(CASE WHEN id IS NULL THEN 1 ELSE 0 END) AS null_count,
+    SUM(CASE WHEN name IS NULL THEN 1 ELSE 0 END) AS null_count,
+    SUM(CASE WHEN email IS NULL THEN 1 ELSE 0 END) AS null_count,
+    SUM(CASE WHEN signup_date IS NULL THEN 1 ELSE 0 END) AS null_count
+FROM customers;
 
--- Value Ranges
-SELECT id, name, department, salary, hired_date
-FROM employees
-WHERE
-    (salary < 0) OR
-    (salary > 999999.99);
+-- Test value ranges
+SELECT 
+    COUNT(*) AS num_rows,
+    MIN(id),
+    MAX(id),
+    AVG(id)
+FROM customers;
 
--- Business Rule Compliance
--- Assuming there's a minimum salary requirement of 45000 and a maximum of 100000 for the employees table
-SELECT id, name, department, salary, hired_date
-FROM employees
-WHERE
-    (salary < 45000) OR
-    (salary > 100000);
-
--- Referential Integrity
--- Assuming there are no foreign keys in the provided table schema, you can skip this test for now.
+-- Test referential integrity
+SELECT 
+    COUNT(*) AS num_rows,
+    SUM(CASE WHEN id NOT IN (SELECT DISTINCT id FROM customers) THEN 1 ELSE 0 END) AS invalid_ids
+FROM customers;

@@ -17,6 +17,7 @@ from connect_alchemy import MySQLConnection
 from typing import Dict, List, Optional
 import pandas as pd
 from prompts import PROMPT_TEMPLATES
+from execute_output import ExecuteOutput
 
 class CodebaseRAG:
     def __init__(self, db_path: str):
@@ -279,19 +280,9 @@ class CodebaseRAG:
 
     def save_to_file(self, answer: str, output_type: str, query_type: str):
         if output_type == "script":
-            valid_formats = ["sql", "py", "java", "sh"]
-            default_ext = "py" 
+            output_format = "sql" 
         else:  # report
-            valid_formats = ["txt", "md", "html"]
-            default_ext = "md"
-        
-        output_format = input(
-            f"Choose {output_type} format ({'/'.join(valid_formats)}): "
-        ).strip().lower()
-        
-        if output_format not in valid_formats:
-            print(f"Invalid format. Defaulting to '{default_ext}'")
-            output_format = default_ext
+            output_format = "txt"
         
         name = input(f"Enter a name for the {output_type} file (without extension): ").strip()
         if not name:
@@ -301,10 +292,13 @@ class CodebaseRAG:
         
         # Extract code blocks if saving as script
         if output_type == "script":
-            if output_format == "py":
-                output_format = "python"
             if f'```{output_format}' in answer:
-                content = answer.split(f'```{output_format}')[1].split('```')[0].strip()
+                number = answer.split(f'```{output_format}')[1].split('```')
+                contentlist = []
+                for i in range(0,len(number),2):
+                    contentlist.append(answer.split(f'```{output_format}')[1].split('```')[i].strip())
+
+                content = "\n".join(contentlist)
             else:
                 content = answer.strip()
         else:
@@ -312,8 +306,12 @@ class CodebaseRAG:
         
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(content)
+    
         
         print(f"✅ Saved {output_type} to {output_file}")
+        if output_type == "script":
+            return output_file
+        
 
     def load_vector_db(self):
         self.vector_db = FAISS.load_local(
@@ -382,45 +380,27 @@ class CodebaseRAG:
             
             print("\n🧠 Answer:\n", answer)
             
-            self.handle_output(answer, query_type)
+            file_name = self.handle_output(answer, query_type)
+            executor = ExecuteOutput(script_filename=file_name)
+            # Execute the final script
+            executor.execute_final(self.source_db_config)
+
 
 
     def handle_output(self, answer: str, query_type: str):
         print("\n💡 Output Options:")
         print("1. View in terminal")
         print("2. Save as script")
-        print("3. Save as report")
-        print("4. Save as both script and report")
+        print("3. Save as script and report")
         
-        choice = input("Select output option (1-4): ").strip()
+        choice = input("Select output option (1/2/3): ").strip()
         
         if choice == "1":
             return
             
-        if choice in ["2", "4"]:
-            self.save_to_file(answer, "script", query_type)
-            
-        if choice in ["3", "4"]:
+        if choice in ["2","3"]:
+            script_name = self.save_to_file(answer, "script", query_type)
+        if choice == "3":
             self.save_to_file(answer, "report", query_type)
 
-
-# if __name__ == "__main__":
-
-#     # Configure databases
-#     source_config = {
-#         'host': 'localhost',
-#         'user': 'root',
-#         'password': 'password',
-#         'database': 'source_db'
-#     }
-
-#     target_config = {
-#         'host': 'localhost',
-#         'user': 'root',
-#         'password': 'password',
-#         'database': 'target_db'
-#     }
-#     rag = CodebaseRAG("schemas",r"D:\DATA Validation\vector_db3")
-#     rag.configure_databases(source_config, target_config)
-
-#     rag.extract_schema_info(source_config)
+        return script_name

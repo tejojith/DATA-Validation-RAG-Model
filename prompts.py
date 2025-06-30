@@ -7,7 +7,7 @@ PROMPT_TEMPLATES = {
     - Missing required fields
     - Empty strings where data should exist
     - Default values that might indicate missing data
-    - give the output in python to be execute in MySQL
+    - give the output in SQL to be execute in MySQL
     
     Database Context: {context}
     

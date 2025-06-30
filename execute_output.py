@@ -1,45 +1,62 @@
 import os
 
 import mysql.connector
+from connect_alchemy import MySQLConnection
+from typing import Dict, List
+import sqlparse
 
 # Configuration
-RESULTS_FOLDER = 'results'
-SCRIPT_FILENAME = 'testing_script.py'  # Name of your Python script
+RESULTS_FOLDER = 'results' # Name of your Python script
 
 # MySQL connection configuration
 MYSQL_CONFIG = {
     'host': 'localhost',
-    'user': 'your_username',
-    'password': 'your_password',
-    'database': 'your_database'
+    'user': 'root',
+    'password': 'password',
+    'database': 'source_db'
 }
 
-def main():
-    # Connect to MySQL
-    try:
-        conn = mysql.connector.connect(**MYSQL_CONFIG)
-        print("Connected to MySQL database.")
-    except mysql.connector.Error as err:
-        print(f"Error connecting to MySQL: {err}")
-        return
+class ExecuteOutput:
+    def __init__(self, script_filename, results_folder: str = RESULTS_FOLDER):
+        self.results_folder = results_folder
+        self.script_filename = script_filename
+        self.path = os.path.join(self.results_folder, self.script_filename)
 
-    script_path = os.path.join(RESULTS_FOLDER, SCRIPT_FILENAME)
-    if not os.path.isfile(script_path):
-        print(f"Python script not found: {script_path}")
-        conn.close()
-        return
+        # Ensure the results folder exists
+        if not os.path.exists(self.results_folder):
+            os.makedirs(self.results_folder)
 
-    with open(script_path, 'r', encoding='utf-8') as file:
-        script_code = file.read()
-    try:
-        # Pass the MySQL connection to the script's global namespace
-        exec(script_code, {'__name__': '__main__', 'mysql_conn': conn})
-        print("Python script executed successfully.")
-    except Exception as e:
-        print(f"Error executing script: {e}")
-    finally:
-        conn.close()
-        print("MySQL connection closed.")
+            
+    def extract_output(self,path: str):
+        with open(path, 'r') as file:
+            results = file.read()
+
+        statements = sqlparse.split(results)
+        return statements 
+
+
+    def execute_final(self, connection_config: Dict) -> List[Dict]:
+        conn = MySQLConnection(**connection_config)     
+        try:
+            #get the script
+            statements = self.extract_output(self.path)
+            # execute the script
+            for stmt in statements:
+                cleaned = stmt.strip()
+                if cleaned:
+                    try:
+                        result = conn.execute_query(cleaned)
+                        print(result)
+                    except Exception as e:
+                        print(f"Error executing: {cleaned}\n{e}")
+        finally:
+            conn.close()
+                
+
 
 if __name__ == "__main__":
-    main()
+
+    executor = ExecuteOutput(script_filename='test2_script.sql')
+    # Execute the final script
+    executor.execute_final(MYSQL_CONFIG)
+

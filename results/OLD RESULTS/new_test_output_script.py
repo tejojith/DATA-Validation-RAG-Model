@@ -1,0 +1,89 @@
+from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.sql import func
+import pymysql
+
+# Database connection settings
+DB_USER = 'your_username'
+DB_PASSWORD = 'your_password'
+DB_HOST = 'localhost'
+DB_PORT = 3306
+DB_NAME = 'your_database_name'
+
+# Create engine and connect to the database
+engine = create_engine(f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}", echo=True)
+metadata = MetaData()
+
+# Define tables
+customers = Table('customers', metadata,
+    Column('id', String(50), nullable=False),
+    Column('name', String(255)),
+    Column('email', String(255)),
+    Column('signup_date', String(60))
+)
+orders = Table('orders', metadata,
+    Column('id', String(50), nullable=False),
+    Column('customer_id', String(70)),
+    Column('product_id', String(55)),
+    Column('quantity', String(40)),
+    Column('order_date', String(50))
+)
+products = Table('products', metadata,
+    Column('id', String(50), nullable=False),
+    Column('name', String(255)),
+    Column('price', String(60)),
+    Column('stock', String(50))
+)
+
+# Function to check for NULL values in critical columns
+def check_nulls(table):
+    result = engine.execute(table.select().where(table.c.id.is_(None)))
+    return len(result.fetchall()) > 0
+
+# Function to check for missing required fields
+def check_required_fields(table, required_columns):
+    result = engine.execute(table.select().where(func.count(required_columns).label('count') == 0))
+    return len(result.fetchall()) > 0
+
+# Function to check for empty strings where data should exist
+def check_empty_strings(table, columns):
+    result = engine.execute(table.select().where(columns.any() == ''))
+    return len(result.fetchall()) > 0
+
+# Function to check for default values that might indicate missing data
+def check_default_values(table, column, default_value):
+    result = engine.execute(table.select().where(column == default_value))
+    return len(result.fetchall()) > 0
+
+# Main function to perform the validation checks
+def validate_data():
+    # Check for NULL values in critical columns
+    print(f"Checking for NULL values:")
+    print(f"\tcustomers: {check_nulls(customers)}")
+    print(f"\torders: {check_nulls(orders)}")
+    print(f"\tproducts: {check_nulls(products)}")
+
+    # Check for missing required fields
+    required_columns = [customers.c.name, customers.c.email, orders.c.customer_id, orders.c.product_id, products.c.name]
+    print(f"\nChecking for missing required fields:")
+    print(f"\tcustomers: {check_required_fields(customers, required_columns)}")
+    print(f"\torders: {check_required_fields(orders, [orders.c.customer_id, orders.c.product_id])}")
+    print(f"\tproducts: {check_required_fields(products, required_columns)}")
+
+    # Check for empty strings where data should exist
+    columns = [customers.c.name, customers.c.email, orders.c.customer_id, orders.c.product_id, products.c.name]
+    print(f"\nChecking for empty strings:")
+    print(f"\tcustomers: {check_empty_strings(customers, columns)}")
+    print(f"\torders: {check_empty_strings(orders, columns)}")
+    print(f"\tproducts: {check_empty_strings(products, columns)}")
+
+    # Check for default values that might indicate missing data
+    default_value = ''
+    columns = [customers.c.signup_date, orders.c.quantity, products.c.price, products.c.stock]
+    print(f"\nChecking for default values:")
+    print(f"\tcustomers: {check_default_values(customers, customers.c.signup_date, default_value)}")
+    print(f"\torders: {check_default_values(orders, orders.c.quantity, default_value)}")
+    print(f"\tproducts: {check_default_values(products, products.c.price, default_value) or check_default_values(products, products.c.stock, default_value)}")
+
+if __name__ == "__main__":
+    validate_data()
