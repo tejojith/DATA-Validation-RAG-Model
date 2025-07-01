@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Data Validation System</title>
+    <link rel="stylesheet" href="stylesheet.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 RAG Data Validation System</h1>
+            <p>Intelligent Database Analysis & Validation</p>
+        </div>
+
+        <div style="margin: 10px 0; align: right; display: flex; justify-content: flex-end; gap: 10px; font-size: 16px;">
+            <a href="/" class="btn" style= "background: white; color:#000000;">🏠 Home</a>     
+            <a href="/query" class="btn" style= "background: white; color:#000000;">💬 Query</a>
+            <a href="/scripts" class="btn" style= "background: white; color:#000000;">📄 Scripts</a>
+        </div>
+
+
+    
+        <!-- Script Management -->
+        <div class="card">
+            <h2>📄 Script Management</h2>
+            <button class="btn" onclick="listScripts()">📂 List Scripts</button>
+            <div id="script-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentAnswer = '';
+        let currentQueryType = '';
+
+        async function saveScript() {
+            if (!currentAnswer) {
+                alert('No answer to save');
+                return;
+            }
+            
+            const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
+            
+            try {
+                const response = await fetch('/api/save-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        answer: currentAnswer,
+                        query_type: currentQueryType,
+                        filename: filename
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`✅ ${result.message}`);
+                    listScripts();
+                } else {
+                    alert(`❌ ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ ${error.message}`);
+            }
+        }
+
+        async function saveAndExecute() {
+            if (!currentAnswer) {
+                alert('No answer to save');
+                return;
+            }
+            
+            const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
+            
+            try {
+                // First save the script
+                const saveResponse = await fetch('/api/save-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        answer: currentAnswer,
+                        query_type: currentQueryType,
+                        filename: filename
+                    })
+                });
+                
+                const saveResult = await saveResponse.json();
+                
+                if (!saveResponse.ok) {
+                    alert(`❌ Save failed: ${saveResult.error}`);
+                    return;
+                }
+                
+                // Then execute the script
+                showLoading(true);
+                const executeResponse = await fetch('/api/execute-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: saveResult.filename })
+                });
+                
+                const executeResult = await executeResponse.json();
+                
+                if (executeResponse.ok) {
+                    displayExecutionResults(executeResult.results);
+                } else {
+                    alert(`❌ Execution failed: ${executeResult.error}`);
+                }
+            } catch (error) {
+                alert(`❌ ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function displayExecutionResults(results) {
+            let html = '<div class="result-section"><h3>🎯 Execution Results</h3>';
+            
+            results.forEach((result, index) => {
+                html += `<div style="margin-bottom: 15px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px;">`;
+                html += `<h4>Query ${index + 1}:</h4>`;
+                html += `<div class="code-block">${result.query}</div>`;
+                
+                if (result.error) {
+                    html += `<p style="color: #e53e3e;">❌ Error: ${result.error}</p>`;
+                } else if (Array.isArray(result.result)) {
+                    html += `<p style="color: #38a169;">✅ Success (${result.row_count} rows)</p>`;
+                    if (result.result.length > 0) {
+                        html += `<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">`;
+                        const keys = Object.keys(result.result[0]);
+                        html += `<tr>${keys.map(key => `<th style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5;">${key}</th>`).join('')}</tr>`;
+                        result.result.slice(0, 5).forEach(row => {
+                            html += `<tr>${keys.map(key => `<td style="border: 1px solid #ddd; padding: 8px;">${row[key] || ''}</td>`).join('')}</tr>`;
+                        });
+                        html += `</table></div>`;
+                        if (result.result.length > 5) {
+                            html += `<p><em>... and ${result.result.length - 5} more rows</em></p>`;
+                        }
+                    }
+                } else {
+                    html += `<p style="color: #38a169;">✅ ${result.result}</p>`;
+                }
+                html += `</div>`;
+            });
+            
+            html += '</div>';
+            document.getElementById('query-result').innerHTML = html;
+        }
+
+        
+
+        function getSourceConfig() {
+            return {
+                host: document.getElementById('src-host').value,
+                user: document.getElementById('src-user').value,
+                password: document.getElementById('src-password').value,
+                database: document.getElementById('src-database').value,
+                port: parseInt(document.getElementById('src-port').value)
+            };
+        }
+
+        function getTargetConfig() {
+            return {
+                host: document.getElementById('tgt-host').value,
+                user: document.getElementById('tgt-user').value,
+                password: document.getElementById('tgt-password').value,
+                database: document.getElementById('tgt-database').value,
+                port: parseInt(document.getElementById('tgt-port').value)
+            };
+        }
+
+        async function listScripts() {
+            try {
+                const response = await fetch('/api/list-scripts');
+                const result = await response.json();
+                const div = document.getElementById('script-list');
+                
+                if (response.ok) {
+                    if (result.scripts.length === 0) {
+                        div.innerHTML = showAlert('No scripts available yet.');
+                        return;
+                    }
+
+                    let html = '<ul>';
+                    result.scripts.forEach(file => {
+                        html += `<li>
+                            <code>${file}</code> 
+                            <button class="btn btn-success" onclick="downloadScript('${file}')">⬇️ Download</button>
+                            <button class="btn" onclick="executeNamedScript('${file}')">⚙️ Execute</button>
+                        </li>`;
+                    });
+                    html += '</ul>';
+                    div.innerHTML = html;
+                } else {
+                    div.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('script-list').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            }
+        }
+
+        function downloadScript(filename) {
+            window.open(`/api/download-script/${filename}`, '_blank');
+        }
+
+        async function executeNamedScript(filename) {
+            showLoading(true);
+            try {
+                const response = await fetch('/api/execute-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    displayExecutionResults(result.results);
+                } else {
+                    alert(`❌ ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+    </script>
+</body>
+</html>

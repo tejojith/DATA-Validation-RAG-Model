@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Data Validation System</title>
+    <link rel="stylesheet" href="stylesheet.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 RAG Data Validation System</h1>
+            <p>Intelligent Database Analysis & Validation</p>
+        </div>
+        
+
+        <!-- Database Configuration -->
+        <div class="card">
+            <h2>📊 Database Configuration</h2>
+            <div class="form-group">
+                <label>Source Database (Required)</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <input type="text" id="src-host" placeholder="Host" value="localhost">
+                    <input type="text" id="src-user" placeholder="User" value="root">
+                    <input type="password" id="src-password" placeholder="Password" value="password">
+                    <input type="text" id="src-database" placeholder="Database" value="source_db">
+                    <input type="number" id="src-port" placeholder="Port" value="3306">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Target Database (Optional)</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <input type="text" id="tgt-host" placeholder="Host" value="localhost">
+                    <input type="text" id="tgt-user" placeholder="User" value="root">
+                    <input type="password" id="tgt-password" placeholder="Password" value="password">
+                    <input type="text" id="tgt-database" placeholder="Database" value="target_db">
+                    <input type="number" id="tgt-port" placeholder="Port" value="3306">
+                </div>
+            </div>
+            
+            <button class="btn" onclick="testConnection()">🔌 Test Connection</button>
+            <button class="btn" onclick="configureDB()">⚙️ Configure Databases</button>
+            <button class="btn" onclick="createEmbeddings()">🧠 Create Embeddings</button>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing your query...</p>
+            </div>
+            
+            <div id="config-status"></div>
+        </div>
+
+        <!-- Query Interface -->
+        <div class="card">
+            <h2>🔍 Query Interface</h2>
+            <div class="form-group">
+                <label>Enter your validation query:</label>
+                <textarea id="query-input" rows="4" placeholder="e.g., Check for null values in customer table, Compare source and target data completeness..."></textarea>
+            </div>
+            
+            <button class="btn" onclick="submitQuery()">🚀 Submit Query</button>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing your query...</p>
+            </div>
+            
+            <div id="query-result"></div>
+        </div>
+
+        <!-- Script Management -->
+        <div class="card">
+            <h2>📄 Script Management</h2>
+            <button class="btn" onclick="listScripts()">📂 List Scripts</button>
+            <div id="script-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentAnswer = '';
+        let currentQueryType = '';
+
+        function showAlert(message, type = 'success') {
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+            return `<div class="alert ${alertClass}">${message}</div>`;
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        async function testConnection() {
+            const sourceConfig = getSourceConfig();
+            
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config: sourceConfig })
+                });
+                
+                const result = await response.json();
+                const status = document.getElementById('config-status');
+                
+                if (response.ok) {
+                    status.innerHTML = showAlert('✅ Connection successful!');
+                } else {
+                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            }
+        }
+
+        async function configureDB() {
+            const sourceConfig = getSourceConfig();
+            const targetConfig = getTargetConfig();
+            
+            try {
+                const response = await fetch('/api/configure-databases', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_config: sourceConfig,
+                        target_config: targetConfig
+                    })
+                });
+                
+                const result = await response.json();
+                const status = document.getElementById('config-status');
+                
+                if (response.ok) {
+                    status.innerHTML = showAlert('✅ Databases configured successfully!');
+                } else {
+                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            }
+        }
+
+        async function createEmbeddings() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/api/create-embeddings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+                const status = document.getElementById('config-status');
+                
+                if (response.ok) {
+                    status.innerHTML = showAlert('✅ Embeddings created successfully!');
+                } else {
+                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function submitQuery() {
+            const query = document.getElementById('query-input').value.trim();
+            if (!query) {
+                alert('Please enter a query');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                
+                const result = await response.json();
+                const resultDiv = document.getElementById('query-result');
+                
+                if (response.ok) {
+                    currentAnswer = result.answer;
+                    currentQueryType = result.query_type;
+                    
+                    resultDiv.innerHTML = `
+                        <div class="result-section">
+                            <h3>🎯 Query Result</h3>
+                            <p><strong>Type:</strong> ${result.query_type}</p>
+                            <p><strong>Model:</strong> ${result.llm_model}</p>
+                            <p><strong>Processing Time:</strong> ${result.processing_time}s</p>
+                            
+                            <h4>Answer:</h4>
+                            <div class="code-block">${result.answer}</div>
+                            
+                            <div style="margin-top: 15px;">
+                                <button class="btn" onclick="saveScript()">💾 Save as Script</button>
+                                <button class="btn" onclick="saveAndExecute()">🚀 Save & Execute</button>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('query-result').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function saveScript() {
+            if (!currentAnswer) {
+                alert('No answer to save');
+                return;
+            }
+            
+            const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
+            
+            try {
+                const response = await fetch('/api/save-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        answer: currentAnswer,
+                        query_type: currentQueryType,
+                        filename: filename
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(`✅ ${result.message}`);
+                    listScripts();
+                } else {
+                    alert(`❌ ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ ${error.message}`);
+            }
+        }
+
+        async function saveAndExecute() {
+            if (!currentAnswer) {
+                alert('No answer to save');
+                return;
+            }
+            
+            const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
+            
+            try {
+                // First save the script
+                const saveResponse = await fetch('/api/save-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        answer: currentAnswer,
+                        query_type: currentQueryType,
+                        filename: filename
+                    })
+                });
+                
+                const saveResult = await saveResponse.json();
+                
+                if (!saveResponse.ok) {
+                    alert(`❌ Save failed: ${saveResult.error}`);
+                    return;
+                }
+                
+                // Then execute the script
+                showLoading(true);
+                const executeResponse = await fetch('/api/execute-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: saveResult.filename })
+                });
+                
+                const executeResult = await executeResponse.json();
+                
+                if (executeResponse.ok) {
+                    displayExecutionResults(executeResult.results);
+                } else {
+                    alert(`❌ Execution failed: ${executeResult.error}`);
+                }
+            } catch (error) {
+                alert(`❌ ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function displayExecutionResults(results) {
+            let html = '<div class="result-section"><h3>🎯 Execution Results</h3>';
+            
+            results.forEach((result, index) => {
+                html += `<div style="margin-bottom: 15px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px;">`;
+                html += `<h4>Query ${index + 1}:</h4>`;
+                html += `<div class="code-block">${result.query}</div>`;
+                
+                if (result.error) {
+                    html += `<p style="color: #e53e3e;">❌ Error: ${result.error}</p>`;
+                } else if (Array.isArray(result.result)) {
+                    html += `<p style="color: #38a169;">✅ Success (${result.row_count} rows)</p>`;
+                    if (result.result.length > 0) {
+                        html += `<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">`;
+                        const keys = Object.keys(result.result[0]);
+                        html += `<tr>${keys.map(key => `<th style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5;">${key}</th>`).join('')}</tr>`;
+                        result.result.slice(0, 5).forEach(row => {
+                            html += `<tr>${keys.map(key => `<td style="border: 1px solid #ddd; padding: 8px;">${row[key] || ''}</td>`).join('')}</tr>`;
+                        });
+                        html += `</table></div>`;
+                        if (result.result.length > 5) {
+                            html += `<p><em>... and ${result.result.length - 5} more rows</em></p>`;
+                        }
+                    }
+                } else {
+                    html += `<p style="color: #38a169;">✅ ${result.result}</p>`;
+                }
+                html += `</div>`;
+            });
+            
+            html += '</div>';
+            document.getElementById('query-result').innerHTML = html;
+        }
+
+        
+
+        function getSourceConfig() {
+            return {
+                host: document.getElementById('src-host').value,
+                user: document.getElementById('src-user').value,
+                password: document.getElementById('src-password').value,
+                database: document.getElementById('src-database').value,
+                port: parseInt(document.getElementById('src-port').value)
+            };
+        }
+
+        function getTargetConfig() {
+            return {
+                host: document.getElementById('tgt-host').value,
+                user: document.getElementById('tgt-user').value,
+                password: document.getElementById('tgt-password').value,
+                database: document.getElementById('tgt-database').value,
+                port: parseInt(document.getElementById('tgt-port').value)
+            };
+        }
+
+        async function listScripts() {
+            try {
+                const response = await fetch('/api/list-scripts');
+                const result = await response.json();
+                const div = document.getElementById('script-list');
+                
+                if (response.ok) {
+                    if (result.scripts.length === 0) {
+                        div.innerHTML = showAlert('No scripts available yet.');
+                        return;
+                    }
+
+                    let html = '<ul>';
+                    result.scripts.forEach(file => {
+                        html += `<li>
+                            <code>${file}</code> 
+                            <button class="btn btn-success" onclick="downloadScript('${file}')">⬇️ Download</button>
+                            <button class="btn" onclick="executeNamedScript('${file}')">⚙️ Execute</button>
+                        </li>`;
+                    });
+                    html += '</ul>';
+                    div.innerHTML = html;
+                } else {
+                    div.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('script-list').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            }
+        }
+
+        function downloadScript(filename) {
+            window.open(`/api/download-script/${filename}`, '_blank');
+        }
+
+        async function executeNamedScript(filename) {
+            showLoading(true);
+            try {
+                const response = await fetch('/api/execute-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                
+                const result = await response.json();
+                if (response.ok) {
+                    displayExecutionResults(result.results);
+                } else {
+                    alert(`❌ ${result.error}`);
+                }
+            } catch (error) {
+                alert(`❌ ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
+    </script>
+</body>
+</html>

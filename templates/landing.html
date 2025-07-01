@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Data Validation System</title>
+    <link rel="stylesheet" href="stylesheet.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 RAG Data Validation System</h1>
+            <p>Intelligent Database Analysis & Validation</p>
+        </div>
+
+        <div style="margin: 10px 0; align: right; display: flex; justify-content: flex-end; gap: 10px; font-size: 16px;">
+            <a href="/" class="btn" style= "background: white; color:#000000;">🏠 Home</a>     
+            <a href="/query" class="btn" style= "background: white; color:#000000;">💬 Query</a>
+            <a href="/scripts" class="btn" style= "background: white; color:#000000;">📄 Scripts</a>
+        </div>
+
+
+        <!-- Database Configuration -->
+        <div class="card">
+            <h2>📊 Database Configuration</h2>
+            <div class="form-group">
+                <label>Source Database (Required)</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <input type="text" id="src-host" placeholder="Host" value="localhost">
+                    <input type="text" id="src-user" placeholder="User" value="root">
+                    <input type="password" id="src-password" placeholder="Password" value="password">
+                    <input type="text" id="src-database" placeholder="Database" value="source_db">
+                    <input type="number" id="src-port" placeholder="Port" value="3306">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Target Database (Optional)</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <input type="text" id="tgt-host" placeholder="Host" value="localhost">
+                    <input type="text" id="tgt-user" placeholder="User" value="root">
+                    <input type="password" id="tgt-password" placeholder="Password" value="password">
+                    <input type="text" id="tgt-database" placeholder="Database" value="target_db">
+                    <input type="number" id="tgt-port" placeholder="Port" value="3306">
+                </div>
+            </div>
+            
+            <button class="btn" onclick="testConnection()">🔌 Test Connection</button>
+            <button class="btn" onclick="configureDB()">⚙️ Configure Databases</button>
+            <button class="btn" onclick="createEmbeddings()">🧠 Create Embeddings</button>
+            
+            <div id="config-status"></div>
+        </div>
+
+        
+
+    <script>
+        let currentAnswer = '';
+        let currentQueryType = '';
+
+        function showAlert(message, type = 'success') {
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+            return `<div class="alert ${alertClass}">${message}</div>`;
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        async function testConnection() {
+            const sourceConfig = getSourceConfig();
+            
+            try {
+                const response = await fetch('/api/test-connection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config: sourceConfig })
+                });
+                
+                const result = await response.json();
+                const status = document.getElementById('config-status');
+                
+                if (response.ok) {
+                    status.innerHTML = showAlert('✅ Connection successful!');
+                } else {
+                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            }
+        }
+
+        async function configureDB() {
+            const sourceConfig = getSourceConfig();
+            const targetConfig = getTargetConfig();
+            
+            try {
+                const response = await fetch('/api/configure-databases', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_config: sourceConfig,
+                        target_config: targetConfig
+                    })
+                });
+                
+                const result = await response.json();
+                const status = document.getElementById('config-status');
+                
+                if (response.ok) {
+                    status.innerHTML = showAlert('✅ Databases configured successfully!');
+                } else {
+                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            }
+        }
+
+        async function createEmbeddings() {
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/api/create-embeddings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+                const status = document.getElementById('config-status');
+                
+                if (response.ok) {
+                    status.innerHTML = showAlert('✅ Embeddings created successfully!');
+                } else {
+                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                }
+            } catch (error) {
+                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }        
+
+        function getSourceConfig() {
+            return {
+                host: document.getElementById('src-host').value,
+                user: document.getElementById('src-user').value,
+                password: document.getElementById('src-password').value,
+                database: document.getElementById('src-database').value,
+                port: parseInt(document.getElementById('src-port').value)
+            };
+        }
+
+        function getTargetConfig() {
+            return {
+                host: document.getElementById('tgt-host').value,
+                user: document.getElementById('tgt-user').value,
+                password: document.getElementById('tgt-password').value,
+                database: document.getElementById('tgt-database').value,
+                port: parseInt(document.getElementById('tgt-port').value)
+            };
+        }
+    </script>
+</body>
+</html>

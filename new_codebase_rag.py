@@ -267,14 +267,76 @@ class CodebaseRAG:
         else:
             return "completeness"  # default to completeness
 
+    def select_llm_optimized(self, query: str) -> tuple:
+        query_lower = query.lower()
+        
+        # # Simple SQL operations - Use CodeLlama (fastest)
+        # if any(word in query_lower for word in ["select", "count", "null", "missing", "empty"]):
+        #     return ("codellama:7b", {
+        #         "temperature": 0.0,
+        #         "top_k": 1,
+        #         "top_p": 0.1,
+        #         "num_predict": 256,
+        #         "stop": ["```", ";", "\n\n"],
+        #         "num_ctx": 2048,
+        #         "num_batch": 16
+        #     })
+        
+        # # Complex transformations/ETL - Use DeepSeek R1 (best reasoning)
+        # elif any(word in query_lower for word in ["transform", "etl", "complex", "join", "migration", "compare"]):
+        #     return ("deepseek-r1:8b", {
+        #         "temperature": 0.1,
+        #         "top_k": 5,
+        #         "top_p": 0.8,
+        #         "repeat_penalty": 1.05,
+        #         "num_predict": 1024,
+        #         "stop": ["```", "\n\n\n"],
+        #         "num_ctx": 4096,
+        #         "num_batch": 8
+        #     })
+        
+        # # Validation scripts - Use DeepSeek R1 with focused parameters
+        # elif any(word in query_lower for word in ["validate", "check", "verify", "test"]):
+        #     return ("deepseek-r1:8b", {
+        #         "temperature": 0.05,
+        #         "top_k": 3,
+        #         "top_p": 0.7,
+        #         "repeat_penalty": 1.02,
+        #         "num_predict": 512,
+        #         "stop": ["```", ";", "\n\n"],
+        #         "num_ctx": 3072
+        #     })
+        
+        # # Analysis and explanations - Use Mistral
+        # elif any(word in query_lower for word in ["explain", "analyze", "describe", "report", "why", "how"]):
+        #     return ("mistral:7b", {
+        #         "temperature": 0.2,
+        #         "top_k": 10,
+        #         "top_p": 0.9,
+        #         "repeat_penalty": 1.1,
+        #         "num_predict": 800,
+        #         "stop": ["```", "\n\n\n"],
+        #         "num_ctx": 3072,
+        #         "mirostat": 2,
+        #         "mirostat_tau": 5.0,
+        #         "mirostat_eta": 0.1
+        #     })
+        
+        # # Default: Fast CodeLlama for general queries
+        # else:
+        return ("codellama:7b", {
+                "temperature": 0.0,
+                "top_k": 1,
+                "num_predict": 300,
+                "num_ctx": 2048
+            })
     def select_llm(self, query: str) -> str:
         query = query.lower()
         if "code" in query or "sql" in query or "generate" in query:
             return "codellama:7b"
         elif len(query) > 300 or "explain" in query or "describe" in query:
             return "llama3"
-        else:
-            return "mistral"
+
 
 
 
@@ -324,7 +386,13 @@ class CodebaseRAG:
         if not self.vector_db:
             self.load_vector_db()
             
-        retriever = self.vector_db.as_retriever()
+        retriever = self.vector_db.as_retriever(
+            search_kwargs={
+                "k": 3,  # Reduce from 6 to 3 most relevant chunks
+                "fetch_k": 6,  # Reduce initial fetch
+                "score_threshold": 0.7  # Only high-relevance chunks
+            }
+        )
         
         while True:
             query = input("\n🔍 Enter your question (or type 'exit'): ")
@@ -333,13 +401,12 @@ class CodebaseRAG:
 
             # Classify query and select appropriate LLMs
             query_type = self.classify_query(query)
-            llm_model = self.select_llm(query)
+            model_name, params = self.select_llm_optimized(query)
+            print(model_name)
             
             llm = OllamaLLM(
-                model=f"{llm_model}",
-                temperature=0.1,
-                top_k=10,
-                repeat_penalty=1.1
+                model=f"{model_name}",
+                **params
             )
             
             # Use appropriate prompt template

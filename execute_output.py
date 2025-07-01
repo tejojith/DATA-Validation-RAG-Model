@@ -17,15 +17,9 @@ MYSQL_CONFIG = {
 }
 
 class ExecuteOutput:
-    def __init__(self, script_filename, results_folder: str = RESULTS_FOLDER):
-        self.results_folder = results_folder
-        self.script_filename = script_filename
-        self.path = os.path.join(self.results_folder, self.script_filename)
-
-        # Ensure the results folder exists
-        if not os.path.exists(self.results_folder):
-            os.makedirs(self.results_folder)
-
+    def __init__(self, script_filename):
+        self.path = script_filename
+        
             
     def extract_output(self,path: str):
         with open(path, 'r') as file:
@@ -56,7 +50,7 @@ class ExecuteOutput:
 
 if __name__ == "__main__":
 
-    executor = ExecuteOutput(script_filename='test2_script.sql')
+    executor = ExecuteOutput(script_filename='results/test2_script.sql')
     # Execute the final script
     executor.execute_final(MYSQL_CONFIG)
 
