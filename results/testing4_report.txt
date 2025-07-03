@@ -1,0 +1,63 @@
+
+To validate the ETL script, we can use a combination of SQL queries to check for row-level integrity, key field value checks, LEFT JOINs for foreign key validation, null-safe value comparisons using COALESCE, joins used in transformation logic, and any transformation steps.
+
+1. Row-level integrity:
+```sql
+SELECT COUNT(*) AS num_rows
+FROM source_database.raw_orders
+EXCEPT
+SELECT COUNT(*) AS num_rows
+FROM target_database.sales_orders;
+```
+This query will check for missing or mismatched rows between the `source_database.raw_orders` and `target_database.sales_orders` tables. If there are any differences, it will return a non-zero value in the `num_rows` column.
+
+2. Key field value checks:
+```sql
+SELECT COUNT(*) AS num_rows
+FROM source_database.raw_orders
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM target_database.sales_orders
+  WHERE source_database.raw_orders.order_id = target_database.sales_orders.order_id
+);
+```
+This query will check for any rows in the `source_database.raw_orders` table that do not have a corresponding row in the `target_database.sales_orders` table based on the `order_id` field. If there are any differences, it will return a non-zero value in the `num_rows` column.
+
+3. LEFT JOINs for foreign key validation:
+```sql
+SELECT COUNT(*) AS num_rows
+FROM source_database.raw_orders
+LEFT JOIN target_database.sales_orders ON source_database.raw_orders.order_id = target_database.sales_orders.order_id
+WHERE target_database.sales_orders.order_id IS NULL;
+```
+This query will check for any rows in the `source_database.raw_orders` table that do not have a corresponding row in the `target_database.sales_orders` table based on the `order_id` field. If there are any differences, it will return a non-zero value in the `num_rows` column.
+
+4. Null-safe value comparisons using COALESCE:
+```sql
+SELECT COUNT(*) AS num_rows
+FROM source_database.raw_orders
+WHERE COALESCE(source_database.raw_orders.order_date, '1970-01-01') <> COALESCE(target_database.sales_orders.order_date, '1970-01-01');
+```
+This query will check for any rows in the `source_database.raw_orders` table where the `order_date` field is null or empty, and compare it to the corresponding value in the `target_database.sales_orders` table. If there are any differences, it will return a non-zero value in the `num_rows` column.
+
+5. Joins used in transformation logic:
+```sql
+SELECT COUNT(*) AS num_rows
+FROM source_database.raw_orders
+JOIN target_database.sales_orders ON source_database.raw_orders.order_id = target_database.sales_orders.order_id;
+```
+This query will check for any rows in the `source_database.raw_orders` table that have a corresponding row in the `target_database.sales_orders` table based on the `order_id` field. If there are any differences, it will return a non-zero value in the `num_rows` column.
+
+6. Any transformation steps (e.g., price calculations, category mappings):
+```sql
+SELECT COUNT(*) AS num_rows
+FROM source_database.raw_orders
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM target_database.sales_orders
+  WHERE source_database.raw_orders.order_id = target_database.sales_orders.order_id AND source_database.raw_orders.price <> target_database.sales_orders.price
+);
+```
+This query will check for any rows in the `source_database.raw_orders` table where the `price` field does not match the corresponding value in the `target_database.sales_orders` table based on the `order_id` field. If there are any differences, it will return a non-zero value in the `num_rows` column.
+
+These queries can be used to validate the ETL script and ensure that the data is transformed correctly and accurately.

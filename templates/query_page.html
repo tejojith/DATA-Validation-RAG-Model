@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Data Validation System</title>
-    <link rel="stylesheet" href="stylesheet.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
 </head>
 <body>
     <div class="container">
@@ -19,7 +19,6 @@
             <a href="/scripts" class="btn" style= "background: white; color:#000000;">📄 Scripts</a>
         </div>
 
-
         <!-- Query Interface -->
         <div class="card">
             <h2>🔍 Query Interface</h2>
@@ -30,23 +29,27 @@
             
             <button class="btn" onclick="submitQuery()">🚀 Submit Query</button>
             
-            <div class="loading" id="loading">
+            <div class="loading" id="loading" style="display: none;">
                 <div class="spinner"></div>
                 <p>Processing your query...</p>
             </div>
             
             <div id="query-result"></div>
         </div>
+    </div>
 
     <script>
         let currentAnswer = '';
-        let currentQueryType = '';
 
         function showAlert(message, type = 'success') {
             const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
             return `<div class="alert ${alertClass}">${message}</div>`;
         }
 
+        function showLoading(show) {
+            const loadingDiv = document.getElementById('loading');
+            loadingDiv.style.display = show ? 'block' : 'none';
+        }
 
         async function submitQuery() {
             const query = document.getElementById('query-input').value.trim();
@@ -69,17 +72,16 @@
                 
                 if (response.ok) {
                     currentAnswer = result.answer;
-                    currentQueryType = result.query_type;
                     
                     resultDiv.innerHTML = `
                         <div class="result-section">
                             <h3>🎯 Query Result</h3>
-                            <p><strong>Type:</strong> ${result.query_type}</p>
+                            
                             <p><strong>Model:</strong> ${result.llm_model}</p>
                             <p><strong>Processing Time:</strong> ${result.processing_time}s</p>
                             
                             <h4>Answer:</h4>
-                            <div class="code-block">${result.answer}</div>
+                            <div class="code-block">${result.answer.replace(/\n/g, '<br>')}</div>
                             
                             <div style="margin-top: 15px;">
                                 <button class="btn" onclick="saveScript()">💾 Save as Script</button>
@@ -103,7 +105,7 @@
                 return;
             }
             
-            const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
+            const filename = prompt('Enter filename (without extension):') || `validation`;
             
             try {
                 const response = await fetch('/api/save-script', {
@@ -111,7 +113,6 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         answer: currentAnswer,
-                        query_type: currentQueryType,
                         filename: filename
                     })
                 });
@@ -120,7 +121,6 @@
                 
                 if (response.ok) {
                     alert(`✅ ${result.message}`);
-                    listScripts();
                 } else {
                     alert(`❌ ${result.error}`);
                 }
@@ -135,7 +135,7 @@
                 return;
             }
             
-            const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
+            const filename = prompt('Enter filename (without extension):') || `validation`;
             
             try {
                 // First save the script
@@ -144,7 +144,6 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         answer: currentAnswer,
-                        query_type: currentQueryType,
                         filename: filename
                     })
                 });
@@ -212,28 +211,6 @@
             document.getElementById('query-result').innerHTML = html;
         }
 
-        
-
-        function getSourceConfig() {
-            return {
-                host: document.getElementById('src-host').value,
-                user: document.getElementById('src-user').value,
-                password: document.getElementById('src-password').value,
-                database: document.getElementById('src-database').value,
-                port: parseInt(document.getElementById('src-port').value)
-            };
-        }
-
-        function getTargetConfig() {
-            return {
-                host: document.getElementById('tgt-host').value,
-                user: document.getElementById('tgt-user').value,
-                password: document.getElementById('tgt-password').value,
-                database: document.getElementById('tgt-database').value,
-                port: parseInt(document.getElementById('tgt-port').value)
-            };
-        }
-
         async function executeNamedScript(filename) {
             showLoading(true);
             try {
@@ -255,8 +232,64 @@
                 showLoading(false);
             }
         }
-
-
     </script>
+    
+    <style>
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .code-block {
+            background-color: #04080c;
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin: 10px 0;
+        }
+        
+        .result-section {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+    </style>
 </body>
 </html>

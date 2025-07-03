@@ -36,7 +36,7 @@ class MySQLConnection:
         
         try:
             df = pd.read_sql(query, self.engine)
-            print(f"Extracted {len(df)} records from MySQL")
+            # print(f"Extracted {len(df)} records from MySQL")
             return df
         except Exception as e:
             print(f"--Error extracting data: {e}")

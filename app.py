@@ -13,6 +13,7 @@ CORS(app)
 # Global variables
 rag_instance = None
 DB_PATH = None
+embeddings_created = False
 
 def initialize_rag():
     global rag_instance, DB_PATH
@@ -52,15 +53,39 @@ def configure_databases():
 
 @app.route('/api/create-embeddings', methods=['POST'])
 def create_embeddings():
+    global embeddings_created
     try:
+        data = request.json
+        transformation_path = data.get('transformation_path')
+        
         rag = initialize_rag()
         if not rag.source_db_config:
             return jsonify({'error': 'Database configuration required first'}), 400
         
+        # Set transformation logic if provided
+        if transformation_path and os.path.exists(transformation_path):
+            rag.extract_transformation_logic(transformation_path)
+        
+        # Create embeddings and store
         rag.create_embeddings_and_store()
-        return jsonify({'message': 'Embeddings created and stored successfully'})
+        embeddings_created = True
+        
+        return jsonify({
+            'message': 'Embeddings created and stored successfully',
+            'embeddings_ready': True
+        })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f"Error creating embeddings: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/api/embeddings-status')
+def embeddings_status():
+    global embeddings_created
+    return jsonify({'embeddings_ready': embeddings_created})
 
 @app.route('/api/query', methods=['POST'])
 def query_rag():
@@ -73,60 +98,57 @@ def query_rag():
         
         rag = initialize_rag()
         if not rag.vector_db:
-            rag.load_vector_db()
+            try:
+                rag.load_vector_db()
+            except Exception as e:
+                return jsonify({'error': 'Vector database not found. Please create embeddings first.'}), 400
         
         # Get query classification and LLM model
-        query_type = rag.classify_query(query)
-        llm_model = rag.select_llm(query)
+        model_name, params = rag.select_llm_optimized(query)
         
-        # Process the query (simplified version)
+        # Process the query
         from langchain_ollama.llms import OllamaLLM
-        from langchain.chains import RetrievalQA
-        from prompts import PROMPT_TEMPLATES
+        from langchain.chains import LLMChain
+        from new_prompt import VALIDATION_PROMPT
         import time
         
-        retriever = rag.vector_db.as_retriever()
-        llm = OllamaLLM(
-            model=llm_model,
-            temperature=0.1,
-            top_k=10,
-            repeat_penalty=1.1
+        retriever = rag.vector_db.as_retriever(
+            search_kwargs={"k": 3, "fetch_k": 6, "score_threshold": 0.7}
         )
+        
+        llm = OllamaLLM(model=model_name, **params)
         
         start_time = time.time()
         
-        if query_type == "comparison" and rag.target_db_config:
-            all_docs = rag.vector_db.similarity_search(query, k=6)
-            source_docs = [doc for doc in all_docs if doc.metadata.get("source") == "source_db"]
-            target_docs = [doc for doc in all_docs if doc.metadata.get("source") == "target_db"]
-            
-            source_context = "\n".join([doc.page_content for doc in source_docs[:3]])
-            target_context = "\n".join([doc.page_content for doc in target_docs[:3]])
-            
-            prompt = PROMPT_TEMPLATES[query_type].format(
-                source_context=source_context,
-                target_context=target_context,
-                question=query
-            )
-            
-            result = {"result": llm.invoke(prompt)}
+        # Get transformation logic if available
+        if hasattr(rag, 'transformation_path') and rag.transformation_path:
+            transformation_logic = rag.extract_transformation_logic(rag.transformation_path)
+            if isinstance(transformation_logic, list):
+                transformation_logic = "\n".join(transformation_logic)
         else:
-            qa = RetrievalQA.from_chain_type(
-                llm=llm,
-                retriever=retriever,
-                return_source_documents=True,
-                chain_type_kwargs={
-                    "prompt": PROMPT_TEMPLATES[query_type]
-                }
-            )
-            result = qa(query)
+            transformation_logic = "No transformation logic provided"
+        
+        # Retrieve relevant documents
+        retrieved_docs = retriever.invoke(query)
+        context = "\n".join(doc.page_content for doc in retrieved_docs)
+        
+        # Create LLM chain
+        llm_chain = LLMChain(llm=llm, prompt=VALIDATION_PROMPT)
+        
+        # Execute query
+        result = llm_chain.invoke({
+            "context": context,
+            "source_db": rag.source_db_config.get('database', 'source_db') if rag.source_db_config else 'source_db',
+            "target_db": rag.target_db_config.get('database', 'target_db') if rag.target_db_config else 'target_db',
+            "transformation_logic": transformation_logic,
+            "query": query
+        })
         
         end_time = time.time()
         
         return jsonify({
-            'answer': result["result"],
-            'query_type': query_type,
-            'llm_model': llm_model,
+            'answer': result["text"],
+            'llm_model': model_name,
             'processing_time': round(end_time - start_time, 2)
         })
     except Exception as e:
@@ -147,24 +169,50 @@ def save_script():
         os.makedirs('results', exist_ok=True)
         
         # Extract SQL code from answer
-        if '```sql' in answer:
-            content = answer.split('```sql')[1].split('```')[0].strip()
-        elif '```' in answer:
-            content = answer.split('```')[1].split('```')[0].strip()
-        else:
-            content = answer.strip()
+        content = extract_sql_from_answer(answer)
         
-        output_file = f"results/{filename}.sql"
+        # Ensure filename has .sql extension
+        if not filename.endswith('.sql'):
+            filename = f"{filename}.sql"
+        
+        output_file = f"results/{filename}"
         
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(content)
         
         return jsonify({
             'message': f'Script saved to {output_file}',
-            'filename': f'{filename}.sql'
+            'filename': filename
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+def extract_sql_from_answer(answer):
+    """Extract SQL code from the answer text"""
+    # Try to find SQL code blocks
+    if '```sql' in answer:
+        # Multiple SQL blocks
+        sql_blocks = []
+        parts = answer.split('```sql')
+        for part in parts[1:]:  # Skip first part (before first ```sql)
+            if '```' in part:
+                sql_block = part.split('```')[0].strip()
+                if sql_block:
+                    sql_blocks.append(sql_block)
+        if sql_blocks:
+            return '\n\n'.join(sql_blocks)
+    
+    # Try generic code blocks
+    elif '```' in answer:
+        parts = answer.split('```')
+        for i in range(1, len(parts), 2):  # Get odd-indexed parts (code blocks)
+            block = parts[i].strip()
+            # Check if it looks like SQL
+            if any(keyword in block.upper() for keyword in ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER']):
+                return block
+    
+    # If no code blocks found, return the whole answer
+    return answer.strip()
 
 @app.route('/api/execute-script', methods=['POST'])
 def execute_script():
@@ -179,54 +227,20 @@ def execute_script():
         if not rag.source_db_config:
             return jsonify({'error': 'Database configuration required'}), 400
         
+        # Execute script using ExecuteOutput
+        script_path = os.path.join('results', filename)
+        if not os.path.exists(script_path):
+            return jsonify({'error': f'Script file {filename} not found'}), 404
+        
         executor = ExecuteOutput(script_filename=filename)
-        
-        # Capture execution results
-        results = []
-        
-        # Override the execute_final method to capture results
-        from connect_alchemy import MySQLConnection
-        import sqlparse
-        
-        conn = MySQLConnection(**rag.source_db_config)
-        try:
-            script_path = os.path.join('results', filename)
-            with open(script_path, 'r') as file:
-                script_content = file.read()
-            
-            statements = sqlparse.split(script_content)
-            
-            for stmt in statements:
-                cleaned = stmt.strip()
-                if cleaned:
-                    try:
-                        result = conn.execute_query(cleaned)
-                        if result is not None and not result.empty:
-                            results.append({
-                                'query': cleaned,
-                                'result': result.to_dict('records'),
-                                'row_count': len(result)
-                            })
-                        else:
-                            results.append({
-                                'query': cleaned,
-                                'result': 'Query executed successfully',
-                                'row_count': 0
-                            })
-                    except Exception as e:
-                        results.append({
-                            'query': cleaned,
-                            'error': str(e)
-                        })
-        finally:
-            conn.close()
+        results = executor.execute_and_capture_results(rag.source_db_config)
         
         return jsonify({
             'message': 'Script executed successfully',
             'results': results
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 @app.route('/api/test-connection', methods=['POST'])
 def test_connection():
@@ -247,10 +261,6 @@ def test_connection():
             return jsonify({'error': 'Connection failed'}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-
-
-
 
 @app.route('/api/download-script/<filename>')
 def download_script(filename):
@@ -274,6 +284,13 @@ def list_scripts():
         return jsonify({'scripts': scripts})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Add missing utility functions for the frontend
+def showAlert(message, type='success'):
+    return f'<div class="alert alert-{type}">{message}</div>'
+
+def showLoading(show):
+    return f'<div class="loading" style="display: {"block" if show else "none"}"><div class="spinner"></div><p>Processing...</p></div>'
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

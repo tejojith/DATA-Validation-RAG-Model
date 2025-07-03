@@ -4,7 +4,129 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Data Validation System</title>
-    <link rel="stylesheet" href="stylesheet.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
+    <style>
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .next-button {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .next-button:hover {
+            background-color: #218838;
+        }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .transformation-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        
+        .btn {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        input[type="text"], input[type="password"], input[type="number"], input[type="file"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -14,11 +136,10 @@
         </div>
 
         <div style="margin: 10px 0; align: right; display: flex; justify-content: flex-end; gap: 10px; font-size: 16px;">
-            <a href="/" class="btn" style= "background: white; color:#000000;">🏠 Home</a>     
-            <a href="/query" class="btn" style= "background: white; color:#000000;">💬 Query</a>
-            <a href="/scripts" class="btn" style= "background: white; color:#000000;">📄 Scripts</a>
+            <a href="/" class="btn" style="background: white; color:#000000;">🏠 Home</a>     
+            <a href="/query" class="btn" style="background: white; color:#000000;">💬 Query</a>
+            <a href="/scripts" class="btn" style="background: white; color:#000000;">📄 Scripts</a>
         </div>
-
 
         <!-- Database Configuration -->
         <div class="card">
@@ -47,16 +168,43 @@
             
             <button class="btn" onclick="testConnection()">🔌 Test Connection</button>
             <button class="btn" onclick="configureDB()">⚙️ Configure Databases</button>
+            
+            <!-- Transformation Logic Section -->
+            <div class="transformation-section">
+                <h3>📋 Transformation Logic (Optional)</h3>
+                <div class="form-group">
+                    <label for="transformation-file">Upload Transformation Script (.sql)</label>
+                    <input type="file" id="transformation-file" accept=".sql" />
+                    <small>Upload a SQL file containing transformation logic for better context</small>
+                </div>
+            </div>
+            
             <button class="btn" onclick="createEmbeddings()">🧠 Create Embeddings</button>
+            
+            <!-- Loading indicator -->
+            <div id="loading" class="loading">
+                <div class="loading-spinner"></div>
+                <p>Creating embeddings... This may take a few minutes.</p>
+            </div>
+            
+            <!-- Next button (hidden initially) -->
+            <div id="next-section" class="hidden" style=" align-items: right;">
+                <a href="/query" class="next-button">➡️ Next</a>
+            </div>
             
             <div id="config-status"></div>
         </div>
-
-        
+    </div>
 
     <script>
         let currentAnswer = '';
         let currentQueryType = '';
+        let embeddingsCreated = false;
+
+        // Check embeddings status on page load
+        window.addEventListener('load', function() {
+            checkEmbeddingsStatus();
+        });
 
         function showAlert(message, type = 'success') {
             const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
@@ -65,6 +213,33 @@
 
         function showLoading(show) {
             document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function showNextButton(show) {
+            const nextSection = document.getElementById('next-section');
+            if (show) {
+                nextSection.classList.remove('hidden');
+            } else {
+                nextSection.classList.add('hidden');
+            }
+        }
+
+        async function checkEmbeddingsStatus() {
+            try {
+                const response = await fetch('/api/embeddings-status');
+                const result = await response.json();
+                
+                if (result.embeddings_ready) {
+                    embeddingsCreated = true;
+                    showNextButton(true);
+                    const status = document.getElementById('config-status');
+                    if (!status.innerHTML.includes('Embeddings created')) {
+                        status.innerHTML = showAlert('✅ Embeddings are ready!');
+                    }
+                }
+            } catch (error) {
+                console.log('Error checking embeddings status:', error);
+            }
         }
 
         async function testConnection() {
@@ -119,27 +294,48 @@
 
         async function createEmbeddings() {
             showLoading(true);
+            showNextButton(false);
             
             try {
+                // Get transformation file path if uploaded
+                const transformationFile = document.getElementById('transformation-file');
+                let transformationPath = null;
+                
+                if (transformationFile.files.length > 0) {
+                    // For now, we'll use a default path since file upload handling 
+                    // would require additional backend processing
+                    transformationPath = 'Schemas/transformation scripts.sql';
+                }
+                
                 const response = await fetch('/api/create-embeddings', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        transformation_path: transformationPath
+                    })
                 });
                 
                 const result = await response.json();
                 const status = document.getElementById('config-status');
                 
                 if (response.ok) {
+                    embeddingsCreated = true;
                     status.innerHTML = showAlert('✅ Embeddings created successfully!');
+                    showNextButton(true);
                 } else {
                     status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                    // Show detailed error information if available
+                    if (result.traceback) {
+                        console.error('Detailed error:', result.traceback);
+                        status.innerHTML += `<details><summary>Show detailed error</summary><pre>${result.traceback}</pre></details>`;
+                    }
                 }
             } catch (error) {
                 document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
             } finally {
                 showLoading(false);
             }
-        }        
+        }
 
         function getSourceConfig() {
             return {
@@ -152,13 +348,20 @@
         }
 
         function getTargetConfig() {
-            return {
-                host: document.getElementById('tgt-host').value,
-                user: document.getElementById('tgt-user').value,
-                password: document.getElementById('tgt-password').value,
-                database: document.getElementById('tgt-database').value,
-                port: parseInt(document.getElementById('tgt-port').value)
-            };
+            const host = document.getElementById('tgt-host').value;
+            const database = document.getElementById('tgt-database').value;
+            
+            // Only return target config if at least host and database are provided
+            if (host && database) {
+                return {
+                    host: host,
+                    user: document.getElementById('tgt-user').value,
+                    password: document.getElementById('tgt-password').value,
+                    database: database,
+                    port: parseInt(document.getElementById('tgt-port').value)
+                };
+            }
+            return null;
         }
     </script>
 </body>

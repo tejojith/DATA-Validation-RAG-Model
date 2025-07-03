@@ -1,0 +1,48 @@
+
+To validate that all rows from the `raw_orders` table are correctly transformed into the `sales_orders` table, we can use a combination of SELECT statements and JOIN operations to check for missing or mismatched rows, key field value checks, LEFT JOINs for foreign key validation, null-safe value comparisons using COALESCE, joins used in the transformation logic, and any transformation steps such as price calculations or category mappings.
+
+Here are some examples of MySQL queries that can be used to validate the data:
+
+1. Row-level integrity checks:
+```sql
+SELECT COUNT(*) FROM source_database.raw_orders WHERE NOT EXISTS (SELECT 1 FROM target_database.sales_orders WHERE source_database.raw_orders.order_id = target_database.sales_orders.order_id);
+```
+This query will check for any rows in the `source_database.raw_orders` table that do not have a corresponding row in the `target_database.sales_orders` table. If there are any missing rows, this query will return a non-zero value.
+
+2. Key field value checks:
+```sql
+SELECT COUNT(*) FROM source_database.raw_orders WHERE NOT EXISTS (SELECT 1 FROM target_database.sales_orders WHERE source_database.raw_orders.order_id = target_database.sales_orders.order_id AND source_database.raw_orders.customer_id = target_database.sales_orders.customer_id);
+```
+This query will check for any rows in the `source_database.raw_orders` table that do not have a corresponding row in the `target_database.sales_orders` table with the same `order_id` and `customer_id`. If there are any missing or mismatched rows, this query will return a non-zero value.
+
+3. LEFT JOIN checks for foreign key validation:
+```sql
+SELECT COUNT(*) FROM source_database.raw_orders AS so
+LEFT JOIN target_database.sales_orders AS so2 ON so.order_id = so2.order_id AND so.customer_id = so2.customer_id
+WHERE so2.order_id IS NULL;
+```
+This query will check for any rows in the `source_database.raw_orders` table that do not have a corresponding row in the `target_database.sales_orders` table with the same `order_id` and `customer_id`. If there are any missing or mismatched rows, this query will return a non-zero value.
+
+4. Null-safe value comparisons using COALESCE:
+```sql
+SELECT COUNT(*) FROM source_database.raw_orders AS so
+LEFT JOIN target_database.sales_orders AS so2 ON so.order_id = so2.order_id AND so.customer_id = so2.customer_id
+WHERE COALESCE(so.total_amount, 0) <> COALESCE(so2.total_amount, 0);
+```
+This query will check for any rows in the `source_database.raw_orders` table where the `total_amount` field is not equal to the corresponding value in the `target_database.sales_orders` table. If there are any discrepancies in the values, this query will return a non-zero value.
+
+5. Joins used in transformation logic:
+```sql
+SELECT COUNT(*) FROM source_database.raw_orders AS so
+JOIN target_database.sales_orders AS so2 ON so.order_id = so2.order_id AND so.customer_id = so2.customer_id
+WHERE so.status <> so2.status;
+```
+This query will check for any rows in the `source_database.raw_orders` table where the `status` field is not equal to the corresponding value in the `target_database.sales_orders` table. If there are any discrepancies in the values, this query will return a non-zero value.
+
+6. Any transformation steps:
+```sql
+SELECT COUNT(*) FROM source_database.raw_orders AS so
+JOIN target_database.sales_orders AS so2 ON so.order_id = so2.order_id AND so.customer_id = so2.customer_id
+WHERE so.price <> so2.price;
+```
+This query will check for any rows in the `source_database.raw_orders` table where the `price` field is not equal to the corresponding value in the `target_database.sales_orders` table. If there are any discrepancies in the values

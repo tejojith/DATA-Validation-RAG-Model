@@ -3,6 +3,7 @@ from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
 from langchain.chains import RetrievalQA
+from langchain.chains import LLMChain
 from langchain_community.document_loaders import TextLoader
 from langchain_ollama.embeddings import OllamaEmbeddings
 from langchain_ollama.llms import OllamaLLM
@@ -16,8 +17,9 @@ from chunking import EnhancedChunker
 from connect_alchemy import MySQLConnection
 from typing import Dict, List, Optional
 import pandas as pd
-from prompts import PROMPT_TEMPLATES
+from new_prompt import NEW_PROMPT, VALIDATION_PROMPT
 from execute_output import ExecuteOutput
+import sqlparse
 
 class CodebaseRAG:
     def __init__(self, db_path: str):
@@ -28,10 +30,21 @@ class CodebaseRAG:
         self.vector_db = None
         self.source_db_config = None
         self.target_db_config = None
+        self.transformation_path = None
 
     def configure_databases(self, source_config: Dict, target_config: Optional[Dict] = None):
         self.source_db_config = source_config
         self.target_db_config = target_config
+    
+    def extract_transformation_logic(self, path: str) -> str:
+        self.transformation_path = path
+        with open(path, 'r') as file:
+            results = file.read()
+
+        statements = sqlparse.split(results)
+
+        return statements
+             
 
     def extract_database_into(self, database: Dict):
         return database
@@ -49,7 +62,22 @@ class CodebaseRAG:
                 table_name = row.iloc[0]  # Get first column value
                 
                 # Get columns
-                columns_df = conn.execute_query(f"DESCRIBE {table_name}")
+                columns_df = conn.execute_query(f"""
+                        SELECT 
+                            COLUMN_NAME,
+                            DATA_TYPE,
+                            IS_NULLABLE,
+                            COLUMN_DEFAULT,
+                            COLUMN_KEY,
+                            EXTRA,
+                            CHARACTER_MAXIMUM_LENGTH,
+                            NUMERIC_PRECISION,
+                            NUMERIC_SCALE
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = '{connection_config['database']}' 
+                        AND TABLE_NAME = '{table_name}'
+                        ORDER BY ORDINAL_POSITION
+                    """)
                 columns = columns_df.to_dict('records')  # Convert to list of dicts
                 
                 # Get foreign keys
@@ -253,6 +281,7 @@ class CodebaseRAG:
         # Save the index
         self.vector_db.save_local(self.db_path)
 
+    #NOT USING FOR NOW - JUST TESTING ONLY ONE NEW PROMPT
     def classify_query(self, query: str) -> str:
         query = query.lower()
         
@@ -325,9 +354,9 @@ class CodebaseRAG:
         # # Default: Fast CodeLlama for general queries
         # else:
         return ("codellama:7b", {
-                "temperature": 0.0,
-                "top_k": 1,
-                "num_predict": 300,
+                "temperature": 0.1,  # Slightly higher for variety
+                "top_k": 5,          # Allow more token choices
+                "num_predict": 1024, # Increase token limit significantly
                 "num_ctx": 2048
             })
     def select_llm(self, query: str) -> str:
@@ -340,7 +369,7 @@ class CodebaseRAG:
 
 
 
-    def save_to_file(self, answer: str, output_type: str, query_type: str):
+    def save_to_file(self,answer: str, output_type: str):
         if output_type == "script":
             output_format = "sql" 
         else:  # report
@@ -348,27 +377,40 @@ class CodebaseRAG:
         
         name = input(f"Enter a name for the {output_type} file (without extension): ").strip()
         if not name:
-            name = f"validation_{query_type}"
+            name = f"validation"
         
         output_file = f"results/{name}_{output_type}.{output_format}"
         
         # Extract code blocks if saving as script
         if output_type == "script":
-            if f'```{output_format}' in answer:
-                number = answer.split(f'```{output_format}')[1].split('```')
-                contentlist = []
-                for i in range(0,len(number),2):
-                    contentlist.append(answer.split(f'```{output_format}')[1].split('```')[i].strip())
-
-                content = "\n".join(contentlist)
+            # Find all SQL code blocks
+            sql_blocks = []
+            current_pos = 0
+            while True:
+                start_marker = f'```{output_format}'
+                start_pos = answer.find(start_marker, current_pos)
+                if start_pos == -1:
+                    break
+                end_pos = answer.find('```', start_pos + len(start_marker))
+                if end_pos == -1:
+                    break
+                sql_block = answer[start_pos + len(start_marker):end_pos].strip()
+                sql_blocks.append(sql_block)
+                current_pos = end_pos + 3
+            
+            if sql_blocks:
+                content = "\n\n".join(sql_blocks)
             else:
                 content = answer.strip()
         else:
             content = answer
         
+        # Create results directory if it doesn't exist
+        import os
+        os.makedirs("results", exist_ok=True)
+        
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(content)
-    
         
         print(f"✅ Saved {output_type} to {output_file}")
         if output_type == "script":
@@ -400,7 +442,7 @@ class CodebaseRAG:
                 break
 
             # Classify query and select appropriate LLMs
-            query_type = self.classify_query(query)
+            # query_type = self.classify_query(query)
             model_name, params = self.select_llm_optimized(query)
             print(model_name)
             
@@ -410,51 +452,82 @@ class CodebaseRAG:
             )
             
             # Use appropriate prompt template
-            if query_type == "comparison" and self.target_db_config:
-                # For comparisons, get both contexts
-                all_docs = self.vector_db.similarity_search(query, k=6)
-                source_docs = [doc for doc in all_docs if doc.metadata.get("source") == "source_db"]
-                target_docs = [doc for doc in all_docs if doc.metadata.get("source") == "target_db"]
+            # if query_type == "comparison" and self.target_db_config:
+            #     # For comparisons, get both contexts
+            #     all_docs = self.vector_db.similarity_search(query, k=6)
+            #     source_docs = [doc for doc in all_docs if doc.metadata.get("source") == "source_db"]
+            #     target_docs = [doc for doc in all_docs if doc.metadata.get("source") == "target_db"]
                 
-                source_context = "\n".join([doc.page_content for doc in source_docs[:3]])
-                target_context = "\n".join([doc.page_content for doc in target_docs[:3]])
+            #     source_context = "\n".join([doc.page_content for doc in source_docs[:3]])
+            #     target_context = "\n".join([doc.page_content for doc in target_docs[:3]])
                 
-                prompt = PROMPT_TEMPLATES[query_type].format(
-                    source_context=source_context,
-                    target_context=target_context,
-                    question=query
-                )
+            #     prompt = PROMPT_TEMPLATES[query_type].format(
+            #         source_context=source_context,
+            #         target_context=target_context,
+            #         question=query
+            #     )
                 
-                result = {"result": llm.invoke(prompt)}
-            else:
-                # For other query types, use standard retrieval
-                qa = RetrievalQA.from_chain_type(
-                    llm=llm,
-                    retriever=retriever,
-                    return_source_documents=True,
-                    chain_type_kwargs={
-                        "prompt": PROMPT_TEMPLATES[query_type]
-                    }
-                )
-                start_time = time.time()
-                result = qa(query)
+            #     result = {"result": llm.invoke(prompt)}
+            # For other query types, use standard retrieval
 
+            # Load transformation logic once
+            if hasattr(self, 'transformation_logic_path'):
+                transformation_logic = self.extract_transformation_logic(self.transformation_logic_path)
+                # Convert list to string if it's a list
+                if isinstance(transformation_logic, list):
+                    transformation_logic = "\n".join(transformation_logic)
+            else:
+                transformation_logic = "No transformation logic provided"
+
+            retrieved_docs = retriever.invoke(query)
+            context = "\n".join(doc.page_content for doc in retrieved_docs)
+
+
+            # qa = RetrievalQA.from_chain_type(
+            #         llm=llm,
+            #         retriever=retriever,
+            #         return_source_documents=True,
+            #         chain_type_kwargs={
+            #             "prompt": NEW_PROMPT
+            #         }
+            #     )
+
+            llm_chain = LLMChain(
+                    llm=llm,
+                    prompt=VALIDATION_PROMPT
+                )
+
+
+            start_time = time.time()
+            # result = qa.invoke({
+            #         "context": context,
+            #         "transformation_logic": transformation_logic,
+            #         "query": query
+            #     })
+            result = llm_chain.invoke({
+                "context": context,
+                "source_db": self.source_db_config.get('database', 'source_db'),
+                "target_db": self.target_db_config.get('database', 'target_db'),
+                "transformation_logic": transformation_logic,
+                "query": query  # or "question" — depending on your NEW_PROMPT definition
+            })
             end_time = time.time()
             print(f"⏱️ Query processed in {end_time - start_time:.2f} seconds")
-            answer = result["result"]
+            # print(result)
+            answer = result["text"]
 
 
             
             print("\n🧠 Answer:\n", answer)
             
-            file_name = self.handle_output(answer, query_type)
+            file_name = self.handle_output(answer)
             executor = ExecuteOutput(script_filename=file_name)
             # Execute the final script
             executor.execute_final(self.source_db_config)
 
 
 
-    def handle_output(self, answer: str, query_type: str):
+    def handle_output(self, answer: str):
         print("\n💡 Output Options:")
         print("1. View in terminal")
         print("2. Save as script")
@@ -466,8 +539,8 @@ class CodebaseRAG:
             return
             
         if choice in ["2","3"]:
-            script_name = self.save_to_file(answer, "script", query_type)
+            script_name = self.save_to_file(answer, "script")
         if choice == "3":
-            self.save_to_file(answer, "report", query_type)
+            self.save_to_file(answer, "report")
 
         return script_name

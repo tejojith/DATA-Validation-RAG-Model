@@ -1,0 +1,22 @@
+
+Here are some potential MySQL validation queries to ensure that the transformation logic has been applied correctly and completely:
+```sql
+-- Row Count Check
+SELECT COUNT(*) FROM source_database.table1;
+SELECT COUNT(*) FROM target_database.table1;
+
+-- Foreign Key Validation
+SELECT COUNT(*) FROM target_database.table2 WHERE table2.id NOT IN (SELECT id FROM source_database.table1);
+
+-- Join Validation
+SELECT COUNT(*) FROM target_database.table3 LEFT JOIN source_database.table4 ON target_database.table3.id = source_database.table4.id;
+
+-- Aggregation Validation
+SELECT COUNT(DISTINCT table5.column1) FROM target_database.table5 GROUP BY table5.column2 HAVING COUNT(*) > 1;
+
+-- Filter Validation
+SELECT COUNT(*) FROM target_database.table6 WHERE table6.column3 = 'value';
+```
+These queries can be used to validate that the transformation logic has been applied correctly and completely, by checking the row counts in the source and target databases, validating foreign key references, detecting missing or orphaned records, and ensuring that aggregations and filters are applied as expected.
+
+It's important to note that these queries are just a starting point, and you may need to modify them based on your specific use case and the requirements of your ETL pipeline. Additionally, you should always prefix all tables with `source_database` or `target_database`, including in `SELECT`, `JOIN`, `ON`, and `WHERE` clauses.

@@ -1,0 +1,41 @@
+To validate the ETL pipeline, we will need to compare the expected row counts from the source logic to what's in the target table, validate key joins, check if aggregations, mappings, or lookups were applied correctly, identify missing or extra records in the target, and flag discrepancies in values.
+
+Here are the MySQL queries to perform these checks:
+
+1. Row-level integrity:
+```sql
+SELECT COUNT(*) FROM raw_orders WHERE order_id NOT IN (SELECT DISTINCT order_id FROM sales_orders);
+```
+This query will check if there are any missing or mismatched rows in the `sales_orders` table compared to the `raw_orders` table. If there are any, it will return a non-zero count.
+
+2. Key field value checks:
+```sql
+SELECT COUNT(*) FROM sales_orders WHERE customer_id NOT IN (SELECT DISTINCT customer_id FROM raw_orders);
+```
+This query will check if the `customer_id` values in the `sales_orders` table match the `customer_id` values in the `raw_orders` table. If there are any mismatches, it will return a non-zero count.
+
+3. Joins used in transformation logic:
+```sql
+SELECT COUNT(*) FROM sales_orders WHERE order_id NOT IN (SELECT DISTINCT order_id FROM raw_orders);
+```
+This query will check if the `order_id` values in the `sales_orders` table match the `order_id` values in the `raw_orders` table. If there are any mismatches, it will return a non-zero count.
+
+4. Aggregations, mappings, or lookups:
+```sql
+SELECT COUNT(*) FROM sales_orders WHERE total_amount != (SELECT SUM(unit_price * quantity) FROM raw_order_items WHERE order_id = sales_orders.order_id);
+```
+This query will check if the `total_amount` values in the `sales_orders` table match the sum of the `unit_price` and `quantity` values in the `raw_order_items` table for each corresponding `order_id`. If there are any mismatches, it will return a non-zero count.
+
+5. Missing or extra records:
+```sql
+SELECT COUNT(*) FROM sales_orders WHERE order_id NOT IN (SELECT DISTINCT order_id FROM raw_orders);
+```
+This query will check if there are any missing or extra records in the `sales_orders` table compared to the `raw_orders` table. If there are any, it will return a non-zero count.
+
+6. Discrepancies in values:
+```sql
+SELECT COUNT(*) FROM sales_orders WHERE total_amount != (SELECT SUM(unit_price * quantity) FROM raw_order_items WHERE order_id = sales_orders.order_id);
+```
+This query will check if the `total_amount` values in the `sales_orders` table match the sum of the `unit_price` and `quantity` values in the `raw_order_items` table for each corresponding `order_id`. If there are any mismatches, it will return a non-zero count.
+
+These queries can be run separately or together to validate the ETL pipeline and identify any discrepancies in the data.  

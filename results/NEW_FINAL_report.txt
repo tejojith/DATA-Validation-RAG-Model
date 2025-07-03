@@ -1,0 +1,71 @@
+
+To validate the ETL pipeline, we will need to compare the expected row counts from the source schema to what's in the target schema, validate key joins, check for aggregations, mappings, or lookups, and identify missing or extra records in the target. We will also flag discrepancies in values such as `total_amount`, `price`, `foreign keys`, etc.
+
+Here are some MySQL queries that can be used to validate the ETL pipeline:
+
+1. Row-level integrity checks:
+```sql
+SELECT COUNT(*) FROM source_db.raw_orders;
+SELECT COUNT(*) FROM target_db.sales_orders;
+```
+These queries will give us the total number of rows in each table, which we can compare to ensure that there are no missing or extra records in the target schema.
+
+2. Key join checks:
+```sql
+SELECT COUNT(DISTINCT customers.id) FROM source_db.raw_orders 
+JOIN customers ON customers.id = raw_orders.customer_id;
+SELECT COUNT(DISTINCT products.id) FROM source_db.raw_orders 
+JOIN products ON products.id = raw_orders.product_id;
+```
+These queries will give us the total number of unique customer and product IDs in each table, which we can compare to ensure that there are no missing or extra records in the target schema.
+
+3. Aggregation checks:
+```sql
+SELECT COUNT(DISTINCT orders.order_id) FROM source_db.raw_orders 
+JOIN orders ON orders.id = raw_orders.order_id;
+SELECT COUNT(DISTINCT products.id) FROM target_db.sales_orders 
+JOIN products ON products.id = sales_orders.product_id;
+```
+These queries will give us the total number of unique order IDs and product IDs in each table, which we can compare to ensure that there are no missing or extra records in the target schema.
+
+4. Value checks:
+```sql
+SELECT COUNT(*) FROM source_db.raw_orders 
+WHERE total_amount <> sales_orders.total_amount;
+SELECT COUNT(*) FROM source_db.raw_orders 
+WHERE price <> sales_orders.price;
+SELECT COUNT(*) FROM source_db.raw_orders 
+WHERE foreign_key <> sales_orders.foreign_key;
+```
+These queries will give us the total number of rows where the `total_amount`, `price`, or `foreign key` values do not match between the source and target schemas, which we can flag as discrepancies.
+
+5. Missing records checks:
+```sql
+SELECT COUNT(*) FROM source_db.raw_orders 
+WHERE NOT EXISTS (SELECT * FROM target_db.sales_orders WHERE sales_orders.order_id = raw_orders.order_id);
+SELECT COUNT(*) FROM source_db.raw_orders 
+WHERE NOT EXISTS (SELECT * FROM target_db.sales_orders WHERE sales_orders.product_id = raw_orders.product_id);
+```
+These queries will give us the total number of rows where there are missing records in the target schema, which we can flag as discrepancies.
+
+6. Extra records checks:
+```sql
+SELECT COUNT(*) FROM target_db.sales_orders 
+WHERE NOT EXISTS (SELECT * FROM source_db.raw_orders WHERE raw_orders.order_id = sales_orders.order_id);
+SELECT COUNT(*) FROM target_db.sales_orders 
+WHERE NOT EXISTS (SELECT * FROM source_db.raw_orders WHERE raw_orders.product_id = sales_orders.product_id);
+```
+These queries will give us the total number of rows where there are extra records in the target schema, which we can flag as discrepancies.
+
+7. Summary diagnostics:
+```sql
+SELECT COUNT(*) FROM source_db.raw_orders;
+SELECT COUNT(*) FROM target_db.sales_orders;
+SELECT COUNT(DISTINCT customers.id) FROM source_db.raw_orders 
+JOIN customers ON customers.id = raw_orders.customer_id;
+SELECT COUNT(DISTINCT products.id) FROM source_db.raw_orders 
+JOIN products ON products.id = raw_orders.product_id;
+```
+These queries will give us a summary of the total number of rows, unique customer and product IDs, and any discrepancies in the target schema.
+
+Note that these are just some examples of MySQL queries that can be used to validate an ETL pipeline. The specific
