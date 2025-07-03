@@ -17,7 +17,7 @@ from chunking import EnhancedChunker
 from connect_alchemy import MySQLConnection
 from typing import Dict, List, Optional
 import pandas as pd
-from new_prompt import NEW_PROMPT, VALIDATION_PROMPT
+from new_prompt import VALIDATION_PROMPT, OLD_PROMPT
 from execute_output import ExecuteOutput
 import sqlparse
 
@@ -429,10 +429,12 @@ class CodebaseRAG:
             self.load_vector_db()
             
         retriever = self.vector_db.as_retriever(
+            search_type="mmr",  # Maximum Marginal Relevance for diversity
             search_kwargs={
-                "k": 3,  # Reduce from 6 to 3 most relevant chunks
-                "fetch_k": 6,  # Reduce initial fetch
-                "score_threshold": 0.7  # Only high-relevance chunks
+                "k": 5,
+                "fetch_k": 10,
+                "lambda_mult": 0.7,  # Balance between relevance and diversity
+                "score_threshold": 0.3  # Lower threshold for more inclusive results
             }
         )
         
@@ -494,7 +496,7 @@ class CodebaseRAG:
 
             llm_chain = LLMChain(
                     llm=llm,
-                    prompt=VALIDATION_PROMPT
+                    prompt=OLD_PROMPT
                 )
 
 

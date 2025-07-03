@@ -139,21 +139,21 @@
             
             try {
                 // First save the script
-                const saveResponse = await fetch('/api/save-script', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        answer: currentAnswer,
-                        filename: filename
-                    })
-                });
+                // const saveResponse = await fetch('/api/save-script', {
+                //     method: 'POST',
+                //     headers: { 'Content-Type': 'application/json' },
+                //     body: JSON.stringify({
+                //         answer: currentAnswer,
+                //         filename: filename
+                //     })
+                // });
                 
-                const saveResult = await saveResponse.json();
+                // const saveResult = await saveResponse.json();
                 
-                if (!saveResponse.ok) {
-                    alert(`❌ Save failed: ${saveResult.error}`);
-                    return;
-                }
+                // if (!saveResponse.ok) {
+                //     alert(`❌ Save failed: ${saveResult.error}`);
+                //     return;
+                // }
                 
                 // Then execute the script
                 showLoading(true);

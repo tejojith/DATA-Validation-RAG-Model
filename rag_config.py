@@ -26,7 +26,8 @@ def check_for_file():
 
     if found_dirs:
         print(f"Found existing FAISS vector DB: {found_dirs[0]}")
-        use_existing = input("Do you want to continue with the existing one? (y/n): ").strip().lower()
+        # use_existing = input("Do you want to continue with the existing one? (y/n): ").strip().lower()
+        use_existing = 'y'
         if use_existing == 'y':
             DB_PATH = found_dirs[0]
         else:
