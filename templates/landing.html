@@ -4,127 +4,254 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Data Validation System</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
     <style>
-        .loading {
-            display: none;
-            text-align: center;
-            margin: 20px 0;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        
-        .loading-spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 2s linear infinite;
-            margin: 0 auto;
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
         }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .alert {
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 4px;
-        }
-        
-        .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .alert-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .hidden {
-            display: none;
-        }
-        
-        .next-button {
-            background-color: #28a745;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .next-button:hover {
-            background-color: #218838;
-        }
-        
-        .form-group {
-            margin: 15px 0;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-        }
-        
-        .transformation-section {
-            margin: 20px 0;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-        }
-        
-        .btn {
-            background-color: #007bff;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin: 5px;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        .btn:hover {
-            background-color: #0056b3;
-        }
-        
+
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
         }
-        
-        .card {
-            background: white;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
+
         .header {
             text-align: center;
             margin-bottom: 30px;
+            color: white;
         }
-        
-        input[type="text"], input[type="password"], input[type="number"], input[type="file"] {
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 15px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(45deg, #f8f9ff, #e8f2ff);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #764ba2;
+            background: linear-gradient(45deg, #fff5f8, #f0e6ff);
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(102,126,234,0.1) 0%, transparent 70%);
+            animation: pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.3; }
+            50% { transform: scale(1.1); opacity: 0.1; }
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .upload-area h3 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: #667eea;
+            position: relative;
+            z-index: 1;
+        }
+
+        .upload-area p {
+            color: #888;
+            font-size: 1rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .file-list {
+            list-style: none;
+            margin: 20px 0;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: linear-gradient(135deg, #f8f9ff, #e8f2ff);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status-badge {
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-processing {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .progress-bar {
             width: 100%;
-            padding: 8px 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
+            height: 6px;
+            background: #f0f0f0;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .file-info {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.8rem;
+        }
+
+        .description {
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.6;
         }
     </style>
 </head>
@@ -134,235 +261,239 @@
             <h1>🔍 RAG Data Validation System</h1>
             <p>Intelligent Database Analysis & Validation</p>
         </div>
+        
+        <!-- Page 1: Upload Schemas -->
+        <div id="upload" class="page active">
+            <div class="card">
+                <h2>📁 Upload Database Schemas</h2>
+                <p class="description">Upload your database schema files to create embeddings for the RAG system.</p>
+                
+                <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">📁</div>
+                    <h3>Drop schema files here or click to browse</h3>
+                    <p>Supported formats: .sql, .txt, .json, .csv</p>
+                    <input type="file" id="fileInput" multiple accept=".sql,.txt,.json,.csv">
+                </div>
 
-        <div style="margin: 10px 0; align: right; display: flex; justify-content: flex-end; gap: 10px; font-size: 16px;">
-            <a href="/" class="btn" style="background: white; color:#000000;">🏠 Home</a>     
-            <a href="/query" class="btn" style="background: white; color:#000000;">💬 Query</a>
-            <a href="/scripts" class="btn" style="background: white; color:#000000;">📄 Scripts</a>
-        </div>
+                <div id="uploadedFiles" class="hidden">
+                    <h3>Uploaded Files:</h3>
+                    <ul id="fileList" class="file-list"></ul>
+                </div>
 
-        <!-- Database Configuration -->
-        <div class="card">
-            <h2>📊 Database Configuration</h2>
-            <div class="form-group">
-                <label>Source Database (Required)</label>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                    <input type="text" id="src-host" placeholder="Host" value="localhost">
-                    <input type="text" id="src-user" placeholder="User" value="root">
-                    <input type="password" id="src-password" placeholder="Password" value="password">
-                    <input type="text" id="src-database" placeholder="Database" value="source_db">
-                    <input type="number" id="src-port" placeholder="Port" value="3306">
+                <div class="loading" id="uploadLoading">
+                    <div class="spinner"></div>
+                    <p>Processing schemas and creating embeddings...</p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+
+                <div id="uploadResults" class="hidden">
+                    <div class="alert alert-success">
+                        <strong>✅ Success!</strong> Schema embeddings created successfully.
+                    </div>
+                    <button class="btn" onclick="goToQuery()">Next: Query System →</button>
+                </div>
+
+                <div id="errorMessage" class="hidden">
+                    <div class="alert alert-error">
+                        <strong>❌ Error!</strong> <span id="errorText"></span>
+                    </div>
                 </div>
             </div>
-            
-            <div class="form-group">
-                <label>Target Database (Optional)</label>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                    <input type="text" id="tgt-host" placeholder="Host" value="localhost">
-                    <input type="text" id="tgt-user" placeholder="User" value="root">
-                    <input type="password" id="tgt-password" placeholder="Password" value="password">
-                    <input type="text" id="tgt-database" placeholder="Database" value="target_db">
-                    <input type="number" id="tgt-port" placeholder="Port" value="3306">
-                </div>
-            </div>
-            
-            <button class="btn" onclick="testConnection()">🔌 Test Connection</button>
-            <button class="btn" onclick="configureDB()">⚙️ Configure Databases</button>
-            
-            <!-- Transformation Logic Section -->
-            <div class="transformation-section">
-                <h3>📋 Transformation Logic (Optional)</h3>
-                <div class="form-group">
-                    <label for="transformation-file">Upload Transformation Script (.sql)</label>
-                    <input type="file" id="transformation-file" accept=".sql" />
-                    <small>Upload a SQL file containing transformation logic for better context</small>
-                </div>
-            </div>
-            
-            <button class="btn" onclick="createEmbeddings()">🧠 Create Embeddings</button>
-            
-            <!-- Loading indicator -->
-            <div id="loading" class="loading">
-                <div class="loading-spinner"></div>
-                <p>Creating embeddings... This may take a few minutes.</p>
-            </div>
-            
-            <!-- Next button (hidden initially) -->
-            <div id="next-section" class="hidden" style=" align-items: right;">
-                <a href="/query" class="next-button">➡️ Next</a>
-            </div>
-            
-            <div id="config-status"></div>
         </div>
     </div>
 
     <script>
-        let currentAnswer = '';
-        let currentQueryType = '';
-        let embeddingsCreated = false;
+        // Global variables
+        let uploadedFiles = [];
+        let isProcessing = false;
 
-        // Check embeddings status on page load
-        window.addEventListener('load', function() {
-            checkEmbeddingsStatus();
-        });
-
-        function showAlert(message, type = 'success') {
-            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
-            return `<div class="alert ${alertClass}">${message}</div>`;
+        // Page navigation
+        function goToQuery() {
+            window.location.href = '/query';
         }
 
-        function showLoading(show) {
-            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        // File upload handling
+        document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+
+        // Drag and drop functionality
+        const uploadArea = document.querySelector('.upload-area');
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('drop', handleDrop);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.classList.add('dragover');
         }
 
-        function showNextButton(show) {
-            const nextSection = document.getElementById('next-section');
-            if (show) {
-                nextSection.classList.remove('hidden');
-            } else {
-                nextSection.classList.add('hidden');
-            }
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.classList.remove('dragover');
         }
 
-        async function checkEmbeddingsStatus() {
-            try {
-                const response = await fetch('/api/embeddings-status');
-                const result = await response.json();
-                
-                if (result.embeddings_ready) {
-                    embeddingsCreated = true;
-                    showNextButton(true);
-                    const status = document.getElementById('config-status');
-                    if (!status.innerHTML.includes('Embeddings created')) {
-                        status.innerHTML = showAlert('✅ Embeddings are ready!');
-                    }
-                }
-            } catch (error) {
-                console.log('Error checking embeddings status:', error);
-            }
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            processFiles(files);
         }
 
-        async function testConnection() {
-            const sourceConfig = getSourceConfig();
+        function handleFileUpload(e) {
+            const files = e.target.files;
+            processFiles(files);
+        }
+
+        function processFiles(files) {
+            if (isProcessing) return;
             
-            try {
-                const response = await fetch('/api/test-connection', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ config: sourceConfig })
-                });
-                
-                const result = await response.json();
-                const status = document.getElementById('config-status');
-                
-                if (response.ok) {
-                    status.innerHTML = showAlert('✅ Connection successful!');
-                } else {
-                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
-                }
-            } catch (error) {
-                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
-            }
+            uploadedFiles = Array.from(files);
+            displayUploadedFiles();
+            createEmbeddings();
         }
 
-        async function configureDB() {
-            const sourceConfig = getSourceConfig();
-            const targetConfig = getTargetConfig();
+        function displayUploadedFiles() {
+            const fileList = document.getElementById('fileList');
+            const uploadedSection = document.getElementById('uploadedFiles');
             
-            try {
-                const response = await fetch('/api/configure-databases', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        source_config: sourceConfig,
-                        target_config: targetConfig
-                    })
-                });
-                
-                const result = await response.json();
-                const status = document.getElementById('config-status');
-                
-                if (response.ok) {
-                    status.innerHTML = showAlert('✅ Databases configured successfully!');
-                } else {
-                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
-                }
-            } catch (error) {
-                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
-            }
+            fileList.innerHTML = '';
+            uploadedFiles.forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'file-item';
+                li.innerHTML = `
+                    <div>
+                        <span>📄 ${file.name}</span>
+                        <div class="file-info">${formatFileSize(file.size)} • ${file.type || 'Unknown type'}</div>
+                    </div>
+                    <span class="status-badge status-processing">Processing...</span>
+                `;
+                fileList.appendChild(li);
+            });
+            
+            uploadedSection.classList.remove('hidden');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         async function createEmbeddings() {
-            showLoading(true);
-            showNextButton(false);
+            if (isProcessing) return;
+            
+            isProcessing = true;
+            const loading = document.getElementById('uploadLoading');
+            const results = document.getElementById('uploadResults');
+            const errorDiv = document.getElementById('errorMessage');
+            const progressFill = document.getElementById('progressFill');
+            
+            // Hide previous results/errors
+            results.classList.add('hidden');
+            errorDiv.classList.add('hidden');
+            
+            // Show loading
+            loading.classList.add('active');
             
             try {
-                // Get transformation file path if uploaded
-                const transformationFile = document.getElementById('transformation-file');
-                let transformationPath = null;
-                
-                if (transformationFile.files.length > 0) {
-                    // For now, we'll use a default path since file upload handling 
-                    // would require additional backend processing
-                    transformationPath = 'Schemas/transformation scripts.sql';
-                }
-                
+                // Create FormData with files
+                const formData = new FormData();
+                uploadedFiles.forEach(file => {
+                    formData.append('files', file);
+                });
+
+                // Simulate progress
+                let progress = 0;
+                const progressInterval = setInterval(() => {
+                    progress += Math.random() * 30;
+                    if (progress > 90) progress = 90;
+                    progressFill.style.width = progress + '%';
+                }, 500);
+
+                // Send files to backend
                 const response = await fetch('/api/create-embeddings', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        transformation_path: transformationPath
-                    })
+                    body: formData
                 });
-                
-                const result = await response.json();
-                const status = document.getElementById('config-status');
-                
-                if (response.ok) {
-                    embeddingsCreated = true;
-                    status.innerHTML = showAlert('✅ Embeddings created successfully!');
-                    showNextButton(true);
-                } else {
-                    status.innerHTML = showAlert(`❌ ${result.error}`, 'error');
-                    // Show detailed error information if available
-                    if (result.traceback) {
-                        console.error('Detailed error:', result.traceback);
-                        status.innerHTML += `<details><summary>Show detailed error</summary><pre>${result.traceback}</pre></details>`;
-                    }
+
+                clearInterval(progressInterval);
+                progressFill.style.width = '100%';
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to create embeddings');
                 }
+
+                const data = await response.json();
+                
+                // Update file statuses to success
+                document.querySelectorAll('.status-badge').forEach(badge => {
+                    badge.className = 'status-badge status-success';
+                    badge.textContent = 'Complete';
+                });
+
+                // Hide loading and show results
+                loading.classList.remove('active');
+                results.classList.remove('hidden');
+                
+                showAlert('Embeddings created successfully!', 'success');
+                
             } catch (error) {
-                document.getElementById('config-status').innerHTML = showAlert(`❌ ${error.message}`, 'error');
+                console.error('Error creating embeddings:', error);
+                
+                // Update file statuses to error
+                document.querySelectorAll('.status-badge').forEach(badge => {
+                    badge.className = 'status-badge status-error';
+                    badge.textContent = 'Error';
+                    badge.style.background = '#dc3545';
+                });
+
+                loading.classList.remove('active');
+                errorDiv.classList.remove('hidden');
+                document.getElementById('errorText').textContent = error.message;
+                
+                showAlert('Error creating embeddings: ' + error.message, 'error');
             } finally {
-                showLoading(false);
+                isProcessing = false;
             }
         }
 
-        function getSourceConfig() {
-            return {
-                host: document.getElementById('src-host').value,
-                user: document.getElementById('src-user').value,
-                password: document.getElementById('src-password').value,
-                database: document.getElementById('src-database').value,
-                port: parseInt(document.getElementById('src-port').value)
-            };
-        }
-
-        function getTargetConfig() {
-            const host = document.getElementById('tgt-host').value;
-            const database = document.getElementById('tgt-database').value;
+        function showAlert(message, type = 'success') {
+            // Create alert element
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `<strong>${type === 'success' ? '✅' : '❌'}</strong> ${message}`;
             
-            // Only return target config if at least host and database are provided
-            if (host && database) {
-                return {
-                    host: host,
-                    user: document.getElementById('tgt-user').value,
-                    password: document.getElementById('tgt-password').value,
-                    database: database,
-                    port: parseInt(document.getElementById('tgt-port').value)
-                };
-            }
-            return null;
+            // Add to page
+            const card = document.querySelector('.card');
+            card.insertBefore(alert, card.firstChild);
+            
+            // Remove after 5 seconds
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.parentNode.removeChild(alert);
+                }
+            }, 5000);
         }
+
+        // Add some visual feedback on page load
+        window.addEventListener('load', function() {
+            const uploadArea = document.querySelector('.upload-area');
+            uploadArea.style.transform = 'translateY(20px)';
+            uploadArea.style.opacity = '0';
+            
+            setTimeout(() => {
+                uploadArea.style.transition = 'all 0.8s ease';
+                uploadArea.style.transform = 'translateY(0)';
+                uploadArea.style.opacity = '1';
+            }, 100);
+        });
     </script>
 </body>
 </html>

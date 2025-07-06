@@ -4,292 +4,663 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Data Validation System</title>
+    <!-- main.css already contains the shared colour palette + utility classes -->
     <link rel="stylesheet" href="{{ url_for('static', filename='main.css') }}">
 </head>
 <body>
     <div class="container">
+        <!-- ───────────────────── HEADER / NAV ───────────────────── -->
         <div class="header">
             <h1>🔍 RAG Data Validation System</h1>
-            <p>Intelligent Database Analysis & Validation</p>
+            <p>Intelligent Database Analysis, Validation & Automation</p>
         </div>
 
-        <div style="margin: 10px 0; align: right; display: flex; justify-content: flex-end; gap: 10px; font-size: 16px;">
-            <a href="/" class="btn" style= "background: white; color:#000000;">🏠 Home</a>     
-            <a href="/query" class="btn" style= "background: white; color:#000000;">💬 Query</a>
-            <a href="/scripts" class="btn" style= "background: white; color:#000000;">📄 Scripts</a>
+        <!-- <nav style="margin:10px 0; display:flex; justify-content:flex-end; gap:10px; font-size:16px;">
+            <a href="/"       class="btn" style="background:#ffffff; color:#000">🏠 Home</a>
+            <a href="/query"  class="btn" style="background:#ffffff; color:#000">💬 Query</a>
+            <a href="/scripts" class="btn" style="background:#ffffff; color:#000">📄 Scripts</a>
+        </nav> -->
+
+        <!-- ───────────────────── EMBEDDINGS STATUS ───────────────────── -->
+        <div class="card" id="embeddings-status">
+            <h3>📊 System Status</h3>
+            <p id="status-message">Checking embeddings status...</p>
+            <div id="status-indicator" class="status-indicator"></div>
         </div>
 
-        <!-- Query Interface -->
+        <!-- ───────────────────── QUERY INTERFACE ───────────────────── -->
         <div class="card">
-            <h2>🔍 Query Interface</h2>
+            <h2>💬 Query Interface</h2>
+
             <div class="form-group">
-                <label>Enter your validation query:</label>
-                <textarea id="query-input" rows="4" placeholder="e.g., Check for null values in customer table, Compare source and target data completeness..."></textarea>
+                <label for="query-input">Enter your validation query:</label>
+                <textarea id="query-input" rows="4" placeholder="e.g., Check for null values in customer table, Compare source and target data completeness, Validate data transformation rules..."></textarea>
             </div>
-            
-            <button class="btn" onclick="submitQuery()">🚀 Submit Query</button>
-            
-            <div class="loading" id="loading" style="display: none;">
+
+            <div class="form-group">
+                <button class="btn" id="submit-btn">🚀 Submit Query</button>
+                <button class="btn" id="clear-btn" style="background:#6c757d; margin-left:10px;">🗑️ Clear</button>
+            </div>
+
+            <!-- global spinner -->
+            <div id="loading" class="loading" style="display:none;">
                 <div class="spinner"></div>
                 <p>Processing your query...</p>
             </div>
-            
+
+            <!-- Response / Result panel will be injected here -->
             <div id="query-result"></div>
         </div>
     </div>
 
-    <script>
-        let currentAnswer = '';
+<!-- ───────────────────── SCRIPTS ───────────────────── -->
+<script>
+// Keep track of the latest LLM answer so we can persist / execute it later
+let currentAnswer = '';
+let currentQueryData = null;
 
-        function showAlert(message, type = 'success') {
-            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
-            return `<div class="alert ${alertClass}">${message}</div>`;
+// ─── Initialize page ───────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    checkEmbeddingsStatus();
+    setupEventListeners();
+});
+
+function setupEventListeners() {
+    document.getElementById('submit-btn').addEventListener('click', submitQuery);
+    document.getElementById('clear-btn').addEventListener('click', clearQuery);
+    
+    // Allow Enter key to submit (Ctrl+Enter for new line)
+    document.getElementById('query-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.ctrlKey && !e.shiftKey) {
+            e.preventDefault();
+            submitQuery();
+        }
+    });
+}
+
+// ─── Check embeddings status ───────────────────────────────────────────
+async function checkEmbeddingsStatus() {
+    try {
+        const response = await fetch('/api/embeddings-status');
+        const data = await response.json();
+        
+        const statusDiv = document.getElementById('embeddings-status');
+        const statusMessage = document.getElementById('status-message');
+        const statusIndicator = document.getElementById('status-indicator');
+        
+        if (data.embeddings_ready) {
+            statusMessage.textContent = '✅ System ready - Embeddings loaded successfully';
+            statusIndicator.className = 'status-indicator status-ready';
+            statusDiv.style.borderColor = '#28a745';
+        } else {
+            statusMessage.innerHTML = '⚠️ Embeddings not ready. Please <a href="/">create embeddings</a> first.';
+            statusIndicator.className = 'status-indicator status-not-ready';
+            statusDiv.style.borderColor = '#ffc107';
+        }
+    } catch (error) {
+        console.error('Error checking embeddings status:', error);
+        document.getElementById('status-message').textContent = '❌ Error checking system status';
+        document.getElementById('status-indicator').className = 'status-indicator status-error';
+    }
+}
+
+// ─── Utility helpers ───────────────────────────────────────────────────
+function showAlert(message, type = 'success') {
+    const cls = type === 'success' ? 'alert-success' : 'alert-error';
+    return `<div class="alert ${cls}">${message}</div>`;
+}
+
+function showLoading(show) {
+    const loadingDiv = document.getElementById('loading');
+    const submitBtn = document.getElementById('submit-btn');
+    
+    loadingDiv.style.display = show ? 'block' : 'none';
+    submitBtn.disabled = show;
+    
+    if (show) {
+        submitBtn.textContent = '⏳ Processing...';
+    } else {
+        submitBtn.textContent = '🚀 Submit Query';
+    }
+}
+
+function clearQuery() {
+    document.getElementById('query-input').value = '';
+    document.getElementById('query-result').innerHTML = '';
+    currentAnswer = '';
+    currentQueryData = null;
+}
+
+// ─── Primary flow: ask RAG backend ─────────────────────────────────────
+async function submitQuery() {
+    const query = document.getElementById('query-input').value.trim();
+    if (!query) {
+        alert('Please enter a query first – it cannot be empty.');
+        return;
+    }
+
+    showLoading(true);
+
+    try {
+        const response = await fetch('/api/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query })
+        });
+        
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || `HTTP ${response.status}: ${response.statusText}`);
         }
 
-        function showLoading(show) {
-            const loadingDiv = document.getElementById('loading');
-            loadingDiv.style.display = show ? 'block' : 'none';
+        currentAnswer = data.answer;
+        currentQueryData = data;
+        renderAnswer(data);
+
+    } catch (error) {
+        console.error('Query submission error:', error);
+        document.getElementById('query-result').innerHTML = showAlert(`❌ Error: ${error.message}`, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ─── Render the answer with proper formatting ─────────────────────────
+function renderAnswer({ answer, llm_model, processing_time }) {
+    const resultDiv = document.getElementById('query-result');
+    
+    // Clean and format the answer
+    const formattedAnswer = formatAnswer(answer);
+    
+    resultDiv.innerHTML = `
+        <div class="result-section">
+            <h3>🎯 Query Result</h3>
+            <div class="result-meta">
+                <span class="meta-item"><strong>Model:</strong> ${llm_model}</span>
+                <span class="meta-item"><strong>Processing Time:</strong> ${processing_time}s</span>
+            </div>
+
+            <h4>Generated Response:</h4>
+            <div class="answer-content">${formattedAnswer}</div>
+
+            <div class="action-buttons">
+                <button class="btn btn-primary" onclick="saveScript()">💾 Save Script & Create PR</button>
+                <button class="btn btn-success" onclick="saveAndExecute()">⚡ Save, PR & Execute</button>
+                <button class="btn btn-secondary" onclick="downloadScript()">📥 Download Script</button>
+            </div>
+        </div>`;
+}
+
+// ─── Format answer with proper code highlighting ───────────────────────
+function formatAnswer(answer) {
+    if (!answer) return '';
+    
+    // Replace code blocks with proper formatting
+    let formatted = answer
+        .replace(/```sql\n([\s\S]*?)\n```/g, '<div class="code-block sql-code">$1</div>')
+        .replace(/```\n([\s\S]*?)\n```/g, '<div class="code-block">$1</div>')
+        .replace(/\n/g, '<br>');
+    
+    // If no code blocks found but looks like SQL, wrap it
+    if (!formatted.includes('code-block') && 
+        /\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP)\b/i.test(answer)) {
+        formatted = `<div class="code-block sql-code">${formatted}</div>`;
+    }
+    
+    return formatted;
+}
+
+// ─── Save script & create PR ───────────────────────────────────────────
+async function saveScript() {
+    if (!currentAnswer) {
+        alert('No response to save. Please submit a query first.');
+        return;
+    }
+
+    const filename = prompt('Enter filename (without extension):', 'validation_script')?.trim();
+    if (!filename) return; // user cancelled
+
+    showLoading(true);
+
+    try {
+        const response = await fetch('/api/save-script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                answer: currentAnswer, 
+                filename: filename,
+                query_type: 'validation'
+            })
+        });
+        
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Save operation failed');
         }
 
-        async function submitQuery() {
-            const query = document.getElementById('query-input').value.trim();
-            if (!query) {
-                alert('Please enter a query');
-                return;
-            }
+        // Show success message with PR link
+        const resultDiv = document.getElementById('query-result');
+        const successAlert = `
+            <div class="alert alert-success">
+                ✅ Script saved successfully!<br>
+                📁 Filename: ${data.filename}<br>
+                🔗 Pull Request: <a href="${data.pr_url}" target="_blank">${data.pr_url}</a>
+            </div>
+        `;
+        
+        resultDiv.innerHTML = successAlert + resultDiv.innerHTML;
+
+        saveAndExecute(data,filename)
+
+        
+    } catch (error) {
+        console.error('Save script error:', error);
+        alert(`❌ Error saving script: ${error.message}`);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ─── Save, PR & Execute in one go ──────────────────────────────────────
+async function saveAndExecute(saveData,filename) {
+    if (!currentAnswer) {
+        alert('No response to save and execute. Please submit a query first.');
+        return;
+    }
+    if (!filename) return;
+
+    showLoading(true);
+
+    try {
+        
+        // 2️⃣ Execute the generated script
+        const executeResponse = await fetch('/api/execute-script', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                filename: filename.endsWith('.sql') ? filename : `${filename}.sql`
+            })
+        });
+        
+        const executeData = await executeResponse.json();
+        if (!executeResponse.ok) {
+            throw new Error(executeData.error || 'Execution failed');
+        }
+
+        // Display combined results
+        displaySaveAndExecuteResults(saveData, executeData);
+        
+    } catch (error) {
+        console.error('Save and execute error:', error);
+        alert(`❌ Error: ${error.message}`);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// ─── Display combined save and execute results ─────────────────────────
+function displaySaveAndExecuteResults(saveData, executeData) {
+    const resultDiv = document.getElementById('query-result');
+    
+    let html = `
+        <div class="result-section execution-results">
+            <h3>⚡ Save & Execute Results</h3>
             
-            showLoading(true);
+            <div class="alert alert-success">
+                ✅ Script saved and executed successfully!<br>
+                📁 Filename: ${saveData.filename}<br>
+                🔗 Pull Request: <a href="${saveData.pr_url}" target="_blank">${saveData.pr_url}</a>
+            </div>
             
-            try {
-                const response = await fetch('/api/query', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query })
-                });
+            <h4>📊 Execution Results:</h4>
+    `;
+
+    if (!executeData.results || executeData.results.length === 0) {
+        html += '<p class="no-results">No execution results returned.</p>';
+    } else {
+        executeData.results.forEach((result, index) => {
+            html += `
+                <div class="query-result-item">
+                    <h5>Query ${index + 1}:</h5>
+                    <div class="code-block sql-code">${(result.query || '').replace(/\n/g, '<br>')}</div>
+            `;
+
+            if (result.error) {
+                html += `<div class="alert alert-error">❌ Error: ${result.error}</div>`;
+            } else if (Array.isArray(result.result)) {
+                const rowCount = result.row_count || result.result.length;
+                html += `<div class="alert alert-success">✅ Success (${rowCount} rows)</div>`;
                 
-                const result = await response.json();
-                const resultDiv = document.getElementById('query-result');
-                
-                if (response.ok) {
-                    currentAnswer = result.answer;
-                    
-                    resultDiv.innerHTML = `
-                        <div class="result-section">
-                            <h3>🎯 Query Result</h3>
-                            
-                            <p><strong>Model:</strong> ${result.llm_model}</p>
-                            <p><strong>Processing Time:</strong> ${result.processing_time}s</p>
-                            
-                            <h4>Answer:</h4>
-                            <div class="code-block">${result.answer.replace(/\n/g, '<br>')}</div>
-                            
-                            <div style="margin-top: 15px;">
-                                <button class="btn" onclick="saveScript()">💾 Save as Script</button>
-                                <button class="btn" onclick="saveAndExecute()">🚀 Save & Execute</button>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    resultDiv.innerHTML = showAlert(`❌ ${result.error}`, 'error');
+                if (result.result.length > 0) {
+                    html += renderResultTable(result.result);
                 }
-            } catch (error) {
-                document.getElementById('query-result').innerHTML = showAlert(`❌ ${error.message}`, 'error');
-            } finally {
-                showLoading(false);
+            } else {
+                html += `<div class="alert alert-success">✅ ${result.result}</div>`;
             }
-        }
-
-        async function saveScript() {
-            if (!currentAnswer) {
-                alert('No answer to save');
-                return;
-            }
-            
-            const filename = prompt('Enter filename (without extension):') || `validation`;
-            
-            try {
-                const response = await fetch('/api/save-script', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        answer: currentAnswer,
-                        filename: filename
-                    })
-                });
-                
-                const result = await response.json();
-                
-                if (response.ok) {
-                    alert(`✅ ${result.message}`);
-                } else {
-                    alert(`❌ ${result.error}`);
-                }
-            } catch (error) {
-                alert(`❌ ${error.message}`);
-            }
-        }
-
-        async function saveAndExecute() {
-            if (!currentAnswer) {
-                alert('No answer to save');
-                return;
-            }
-            
-            const filename = prompt('Enter filename (without extension):') || `validation`;
-            
-            try {
-                // First save the script
-                // const saveResponse = await fetch('/api/save-script', {
-                //     method: 'POST',
-                //     headers: { 'Content-Type': 'application/json' },
-                //     body: JSON.stringify({
-                //         answer: currentAnswer,
-                //         filename: filename
-                //     })
-                // });
-                
-                // const saveResult = await saveResponse.json();
-                
-                // if (!saveResponse.ok) {
-                //     alert(`❌ Save failed: ${saveResult.error}`);
-                //     return;
-                // }
-                
-                // Then execute the script
-                showLoading(true);
-                const executeResponse = await fetch('/api/execute-script', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: saveResult.filename })
-                });
-                
-                const executeResult = await executeResponse.json();
-                
-                if (executeResponse.ok) {
-                    displayExecutionResults(executeResult.results);
-                } else {
-                    alert(`❌ Execution failed: ${executeResult.error}`);
-                }
-            } catch (error) {
-                alert(`❌ ${error.message}`);
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        function displayExecutionResults(results) {
-            let html = '<div class="result-section"><h3>🎯 Execution Results</h3>';
-            
-            results.forEach((result, index) => {
-                html += `<div style="margin-bottom: 15px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px;">`;
-                html += `<h4>Query ${index + 1}:</h4>`;
-                html += `<div class="code-block">${result.query}</div>`;
-                
-                if (result.error) {
-                    html += `<p style="color: #e53e3e;">❌ Error: ${result.error}</p>`;
-                } else if (Array.isArray(result.result)) {
-                    html += `<p style="color: #38a169;">✅ Success (${result.row_count} rows)</p>`;
-                    if (result.result.length > 0) {
-                        html += `<div style="overflow-x: auto;"><table style="width: 100%; border-collapse: collapse;">`;
-                        const keys = Object.keys(result.result[0]);
-                        html += `<tr>${keys.map(key => `<th style="border: 1px solid #ddd; padding: 8px; background: #f5f5f5;">${key}</th>`).join('')}</tr>`;
-                        result.result.slice(0, 5).forEach(row => {
-                            html += `<tr>${keys.map(key => `<td style="border: 1px solid #ddd; padding: 8px;">${row[key] || ''}</td>`).join('')}</tr>`;
-                        });
-                        html += `</table></div>`;
-                        if (result.result.length > 5) {
-                            html += `<p><em>... and ${result.result.length - 5} more rows</em></p>`;
-                        }
-                    }
-                } else {
-                    html += `<p style="color: #38a169;">✅ ${result.result}</p>`;
-                }
-                html += `</div>`;
-            });
             
             html += '</div>';
-            document.getElementById('query-result').innerHTML = html;
-        }
+        });
+    }
 
-        async function executeNamedScript(filename) {
-            showLoading(true);
-            try {
-                const response = await fetch('/api/execute-script', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename })
-                });
-                
-                const result = await response.json();
-                if (response.ok) {
-                    displayExecutionResults(result.results);
-                } else {
-                    alert(`❌ ${result.error}`);
-                }
-            } catch (error) {
-                alert(`❌ ${error.message}`);
-            } finally {
-                showLoading(false);
-            }
-        }
-    </script>
+    html += '</div>';
     
-    <style>
-        .loading {
-            text-align: center;
-            margin: 20px 0;
-        }
-        
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 2s linear infinite;
-            margin: 0 auto;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .alert {
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-        }
-        
-        .alert-success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .alert-error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .code-block {
-            background-color: #04080c;
-            border: 1px solid #e9ecef;
-            border-radius: 4px;
-            padding: 10px;
-            font-family: monospace;
-            white-space: pre-wrap;
-            margin: 10px 0;
-        }
-        
-        .result-section {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            background-color: #f9f9f9;
-        }
-    </style>
+    // Add to existing content
+    resultDiv.innerHTML = html + resultDiv.innerHTML;
+}
+
+// ─── Render execution results table ────────────────────────────────────
+function renderResultTable(results) {
+    if (!results || results.length === 0) return '<p>No data returned.</p>';
+    
+    const keys = Object.keys(results[0]);
+    const maxRows = 10; // Limit display for performance
+    
+    let html = `
+        <div class="table-container">
+            <table class="results-table">
+                <thead>
+                    <tr>${keys.map(key => `<th>${key}</th>`).join('')}</tr>
+                </thead>
+                <tbody>
+    `;
+    
+    results.slice(0, maxRows).forEach(row => {
+        html += `<tr>${keys.map(key => `<td>${row[key] ?? ''}</td>`).join('')}</tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    
+    if (results.length > maxRows) {
+        html += `<p class="table-note">Showing first ${maxRows} of ${results.length} rows</p>`;
+    }
+    
+    return html;
+}
+
+// ─── Download script functionality ─────────────────────────────────────
+async function downloadScript() {
+    if (!currentAnswer) {
+        alert('No script to download. Please submit a query first.');
+        return;
+    }
+    
+    const filename = prompt('Enter filename for download:', 'validation_script.sql')?.trim();
+    if (!filename) return;
+    
+    // Create and download file
+    const blob = new Blob([currentAnswer], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename.endsWith('.sql') ? filename : `${filename}.sql`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+}
+</script>
+
+<!-- ───────────────────── Enhanced Styles ───────────────────── -->
+<style>
+/* Loading and status styles */
+.loading { 
+    text-align: center; 
+    margin: 20px 0; 
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.spinner { 
+    border: 4px solid #f3f3f3; 
+    border-top: 4px solid #3498db; 
+    border-radius: 50%; 
+    width: 40px; 
+    height: 40px; 
+    animation: spin 2s linear infinite; 
+    margin: 0 auto 10px; 
+}
+
+@keyframes spin { 
+    0% { transform: rotate(0deg); } 
+    100% { transform: rotate(360deg); } 
+}
+
+/* Alert styles */
+.alert { 
+    padding: 12px 16px; 
+    margin: 10px 0; 
+    border-radius: 6px; 
+    border: 1px solid;
+    font-size: 14px;
+}
+
+.alert-success { 
+    background: #d4edda; 
+    color: #155724; 
+    border-color: #c3e6cb; 
+}
+
+.alert-error { 
+    background: #f8d7da; 
+    color: #721c24; 
+    border-color: #f5c6cb; 
+}
+
+.alert a {
+    color: inherit;
+    text-decoration: underline;
+}
+
+/* Status indicator */
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-left: 10px;
+}
+
+.status-ready { background: #28a745; }
+.status-not-ready { background: #ffc107; }
+.status-error { background: #dc3545; }
+
+/* Code block styles */
+.code-block { 
+    background: #1e1e1e; 
+    color: #d4d4d4; 
+    border: 1px solid #333; 
+    border-radius: 6px; 
+    padding: 16px; 
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace; 
+    font-size: 14px;
+    white-space: pre-wrap; 
+    margin: 12px 0; 
+    overflow-x: auto;
+    line-height: 1.4;
+}
+
+.sql-code {
+    background: #0d1117;
+    border-color: #30363d;
+}
+
+/* Result section styles */
+.result-section { 
+    margin-top: 20px; 
+    padding: 20px; 
+    border: 1px solid #e1e5e9; 
+    border-radius: 8px; 
+    background: #ffffff; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.result-meta {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.meta-item {
+    color: #6c757d;
+}
+
+.answer-content {
+    margin: 15px 0;
+    line-height: 1.6;
+}
+
+/* Button styles */
+.action-buttons {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary { background: #007bff; color: white; }
+.btn-success { background: #28a745; color: white; }
+.btn-secondary { background: #6c757d; color: white; }
+
+/* Table styles */
+.table-container {
+    margin: 15px 0;
+    overflow-x: auto;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.results-table th {
+    background: #f8f9fa;
+    padding: 12px 8px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.results-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.results-table tr:hover {
+    background: #f8f9fa;
+}
+
+.table-note {
+    font-size: 12px;
+    color: #6c757d;
+    margin-top: 8px;
+    font-style: italic;
+}
+
+/* Execution results specific styles */
+.execution-results {
+    border-color: #28a745;
+    background: linear-gradient(135deg, #f8fff9 0%, #ffffff 100%);
+}
+
+.query-result-item {
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid #007bff;
+}
+
+.no-results {
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+    padding: 20px;
+}
+
+/* Form enhancements */
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #495057;
+}
+
+#query-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    transition: border-color 0.2s;
+}
+
+#query-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+/* Card enhancements */
+.card {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    padding: 20px;
+    border: 1px solid #e9ecef;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .result-meta {
+        flex-direction: column;
+        gap: 5px;
+    }
+    
+    .table-container {
+        font-size: 12px;
+    }
+}
+</style>
 </body>
 </html>

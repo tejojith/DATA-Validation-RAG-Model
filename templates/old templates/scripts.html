@@ -33,6 +33,17 @@
         let currentAnswer = '';
         let currentQueryType = '';
 
+        function showAlert(message, type = 'success') {
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+            return `<div class="alert ${alertClass}">${message}</div>`;
+        }
+
+        function showLoading(show) {
+            const loadingDiv = document.getElementById('loading');
+            loadingDiv.style.display = show ? 'block' : 'none';
+        }
+
+
         async function saveScript() {
             if (!currentAnswer) {
                 alert('No answer to save');
@@ -65,54 +76,54 @@
             }
         }
 
-        async function saveAndExecute() {
-            if (!currentAnswer) {
-                alert('No answer to save');
-                return;
-            }
+        // async function saveAndExecute() {
+        //     if (!currentAnswer) {
+        //         alert('No answer to save');
+        //         return;
+        //     }
             
-            const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
+        //     const filename = prompt('Enter filename (without extension):') || `validation_${currentQueryType}`;
             
-            try {
-                // First save the script
-                const saveResponse = await fetch('/api/save-script', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        answer: currentAnswer,
-                        query_type: currentQueryType,
-                        filename: filename
-                    })
-                });
+        //     try {
+        //         // First save the script
+        //         // const saveResponse = await fetch('/api/save-script', {
+        //         //     method: 'POST',
+        //         //     headers: { 'Content-Type': 'application/json' },
+        //         //     body: JSON.stringify({
+        //         //         answer: currentAnswer,
+        //         //         query_type: currentQueryType,
+        //         //         filename: filename
+        //         //     })
+        //         // });
                 
-                const saveResult = await saveResponse.json();
+        //         // const saveResult = await saveResponse.json();
                 
-                if (!saveResponse.ok) {
-                    alert(`❌ Save failed: ${saveResult.error}`);
-                    return;
-                }
+        //         // if (!saveResponse.ok) {
+        //         //     alert(`❌ Save failed: ${saveResult.error}`);
+        //         //     return;
+        //         // }
                 
-                // Then execute the script
-                showLoading(true);
-                const executeResponse = await fetch('/api/execute-script', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: saveResult.filename })
-                });
+        //         // Then execute the script
+        //         showLoading(true);
+        //         const executeResponse = await fetch('/api/execute-script', {
+        //             method: 'POST',
+        //             headers: { 'Content-Type': 'application/json' },
+        //             body: JSON.stringify({ filename: filename })
+        //         });
                 
-                const executeResult = await executeResponse.json();
+        //         const executeResult = await executeResponse.json();
                 
-                if (executeResponse.ok) {
-                    displayExecutionResults(executeResult.results);
-                } else {
-                    alert(`❌ Execution failed: ${executeResult.error}`);
-                }
-            } catch (error) {
-                alert(`❌ ${error.message}`);
-            } finally {
-                showLoading(false);
-            }
-        }
+        //         if (executeResponse.ok) {
+        //             displayExecutionResults(executeResult.results);
+        //         } else {
+        //             alert(`❌ Execution failed: ${executeResult.error}`);
+        //         }
+        //     } catch (error) {
+        //         alert(`❌ ${error.message}`);
+        //     } finally {
+        //         showLoading(false);
+        //     }
+        // }
 
         function displayExecutionResults(results) {
             let html = '<div class="result-section"><h3>🎯 Execution Results</h3>';
@@ -187,7 +198,7 @@
                         html += `<li>
                             <code>${file}</code> 
                             <button class="btn btn-success" onclick="downloadScript('${file}')">⬇️ Download</button>
-                            
+                            <button class="btn" onclick="executeNamedScript('${file}')">⚙️ Execute</button>
                         </li>`;
                     });
                     html += '</ul>';
@@ -204,27 +215,30 @@
             window.open(`/api/download-script/${filename}`, '_blank');
         }
         //<button class="btn" onclick="executeNamedScript('${file}')">⚙️ Execute</button>
-        // async function executeNamedScript(filename) {
-        //     showLoading(true);
-        //     try {
-        //         const response = await fetch('/api/execute-script', {
-        //             method: 'POST',
-        //             headers: { 'Content-Type': 'application/json' },
-        //             body: JSON.stringify({ filename })
-        //         });
+        async function executeNamedScript(filename) {
+            
+            try {
+                // execute the script
+                showLoading(true);
+                const executeResponse = await fetch('/api/execute-script', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: filename })
+                });
                 
-        //         const result = await response.json();
-        //         if (response.ok) {
-        //             displayExecutionResults(result.results);
-        //         } else {
-        //             alert(`❌ ${result.error}`);
-        //         }
-        //     } catch (error) {
-        //         alert(`❌ ${error.message}`);
-        //     } finally {
-        //         showLoading(false);
-        //     }
-        // }
+                const executeResult = await executeResponse.json();
+                
+                if (executeResponse.ok) {
+                    displayExecutionResults(executeResult.results);
+                } else {
+                    alert(`❌ Execution failed: ${executeResult.error}`);
+                }
+            } catch (error) {
+                alert(`❌ ${error.message}`);
+            } finally {
+                showLoading(false);
+            }
+        }
     </script>
 </body>
 </html>

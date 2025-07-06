@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Query Results Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #00c9ff, #92fe9d);
+        }
+
+        .stat-card.success::before {
+            background: linear-gradient(90deg, #56ab2f, #a8e6cf);
+        }
+
+        .stat-card.error::before {
+            background: linear-gradient(90deg, #ff416c, #ff4b2b);
+        }
+
+        .stat-card.warning::before {
+            background: linear-gradient(90deg, #f7971e, #ffd200);
+        }
+
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .stat-label {
+            font-size: 1.1em;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 1.8em;
+            color: #2c3e50;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #3498db;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .query-result {
+            background: white;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease;
+        }
+
+        .query-result:hover {
+            transform: translateY(-2px);
+        }
+
+        .query-header {
+            padding: 20px;
+            border-left: 5px solid #3498db;
+            background: #f8f9fa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .query-header.success {
+            border-left-color: #27ae60;
+            background: #d5f4e6;
+        }
+
+        .query-header.error {
+            border-left-color: #e74c3c;
+            background: #ffeaa7;
+        }
+
+        .query-text {
+            font-family: 'Courier New', monospace;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            line-height: 1.4;
+            margin: 10px 0;
+            overflow-x: auto;
+        }
+
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-success {
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+
+        .status-error {
+            background: #ffeaa7;
+            color: #e74c3c;
+        }
+
+        .query-content {
+            padding: 20px;
+        }
+
+        .result-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        .result-table th,
+        .result-table td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .result-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+            color: #2c3e50;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .result-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .error-message {
+            background: #ffeaa7;
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #e74c3c;
+            font-family: 'Courier New', monospace;
+        }
+
+        .row-count {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 15px;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #219a52;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .github-actions-status {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .pipeline-step {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 10px;
+            background: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .step-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .step-icon.success {
+            background: #27ae60;
+        }
+
+        .step-icon.error {
+            background: #e74c3c;
+        }
+
+        .step-icon.running {
+            background: #f39c12;
+        }
+
+        .allure-report-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+
+        .allure-report-link:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2em;
+            }
+            
+            .container {
+                margin: 10px;
+                border-radius: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 SQL Query Results Dashboard</h1>
+            <p>Database Validation & Testing Results</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card success">
+                <div class="stat-number" id="successCount">0</div>
+                <div class="stat-label">Successful Queries</div>
+            </div>
+            <div class="stat-card error">
+                <div class="stat-number" id="errorCount">0</div>
+                <div class="stat-label">Failed Queries</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="totalCount">0</div>
+                <div class="stat-label">Total Queries</div>
+            </div>
+            <div class="stat-card warning">
+                <div class="stat-number" id="executionTime">0s</div>
+                <div class="stat-label">Execution Time</div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="section">
+                <h2 class="section-title">
+                    🚀 GitHub Actions Pipeline Status
+                </h2>
+                <div class="github-actions-status">
+                    <div class="pipeline-step">
+                        <div class="step-icon success">✓</div>
+                        <div>
+                            <strong>Code Merged to Main Branch</strong>
+                            <p>Pull request successfully merged and workflow triggered</p>
+                        </div>
+                    </div>
+                    <div class="pipeline-step">
+                        <div class="step-icon success">✓</div>
+                        <div>
+                            <strong>Database Connection Established</strong>
+                            <p>Successfully connected to MySQL database</p>
+                        </div>
+                    </div>
+                    <div class="pipeline-step">
+                        <div class="step-icon running">⏳</div>
+                        <div>
+                            <strong>SQL Scripts Execution</strong>
+                            <p>Running validation scripts...</p>
+                        </div>
+                    </div>
+                    <div class="pipeline-step">
+                        <div class="step-icon success">✓</div>
+                        <div>
+                            <strong>Allure Report Generated</strong>
+                            <p>Test results compiled and report generated</p>
+                        </div>
+                    </div>
+                </div>
+                <a href="#" class="allure-report-link" id="allureReportLink">
+                    📊 View Detailed Allure Report
+                </a>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title">
+                    📋 Query Execution Results
+                </h2>
+                <div id="queryResults">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading query results...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Mock data for demonstration
+        const mockResults = [
+            {
+                query: "SELECT COUNT(*) as total_records FROM employees WHERE department = 'Engineering'",
+                success: true,
+                executionTime: 0.45,
+                rowCount: 1,
+                result: [{ total_records: 245 }]
+            },
+            {
+                query: "SELECT emp_id, name, email FROM employees WHERE email IS NULL OR email = ''",
+                success: true,
+                executionTime: 1.23,
+                rowCount: 12,
+                result: [
+                    { emp_id: 101, name: 'John Doe', email: null },
+                    { emp_id: 205, name: 'Jane Smith', email: '' },
+                    { emp_id: 312, name: 'Bob Johnson', email: null }
+                ]
+            },
+            {
+                query: "SELECT * FROM non_existent_table",
+                success: false,
+                executionTime: 0.12,
+                error: "Table 'database.non_existent_table' doesn't exist"
+            },
+            {
+                query: "SELECT department, COUNT(*) as count FROM employees GROUP BY department HAVING COUNT(*) > 50",
+                success: true,
+                executionTime: 0.89,
+                rowCount: 3,
+                result: [
+                    { department: 'Engineering', count: 245 },
+                    { department: 'Sales', count: 78 },
+                    { department: 'Marketing', count: 56 }
+                ]
+            }
+        ];
+
+        // Function to fetch actual results from API
+        async function fetchResults() {
+            try {
+                const response = await fetch('/api/query-results');
+                const data = await response.json();
+                
+                // Using mock data for demonstration
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate loading
+                return mockResults;
+            } catch (error) {
+                console.error('Error fetching results:', error);
+                return mockResults;
+            }
+        }
+
+        // Function to render results
+        function renderResults(results) {
+            const container = document.getElementById('queryResults');
+            let successCount = 0;
+            let errorCount = 0;
+            let totalExecutionTime = 0;
+
+            const resultsHTML = results.map(result => {
+                if (result.success) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
+                totalExecutionTime += result.executionTime;
+
+                return `
+                    <div class="query-result">
+                        <div class="query-header ${result.success ? 'success' : 'error'}">
+                            <div>
+                                <strong>Query ${results.indexOf(result) + 1}</strong>
+                                <div class="query-text">${result.query}</div>
+                            </div>
+                            <div class="status-badge ${result.success ? 'status-success' : 'status-error'}">
+                                ${result.success ? '✓ Success' : '✗ Error'}
+                            </div>
+                        </div>
+                        <div class="query-content">
+                            ${result.success ? `
+                                <div class="row-count">
+                                    📊 ${result.rowCount} row${result.rowCount !== 1 ? 's' : ''} returned
+                                    • ⏱️ ${result.executionTime}s execution time
+                                </div>
+                                ${result.result && result.result.length > 0 ? `
+                                    <table class="result-table">
+                                        <thead>
+                                            <tr>
+                                                ${Object.keys(result.result[0]).map(key => `<th>${key}</th>`).join('')}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${result.result.slice(0, 10).map(row => `
+                                                <tr>
+                                                    ${Object.values(row).map(value => `<td>${value === null ? '<em>NULL</em>' : value}</td>`).join('')}
+                                                </tr>
+                                            `).join('')}
+                                        </tbody>
+                                    </table>
+                                    ${result.result.length > 10 ? `<p><em>Showing first 10 rows of ${result.result.length} total rows</em></p>` : ''}
+                                ` : '<p>No data returned</p>'}
+                            ` : `
+                                <div class="error-message">
+                                    ❌ Error: ${result.error}
+                                </div>
+                            `}
+                            <div class="actions">
+                                <button class="btn btn-primary" onclick="copyQuery('${result.query.replace(/'/g, "\\'")}')">
+                                    📋 Copy Query
+                                </button>
+                                ${result.success ? `
+                                    <button class="btn btn-success" onclick="exportResults(${results.indexOf(result)})">
+                                        📤 Export Results
+                                    </button>
+                                ` : `
+                                    <button class="btn btn-danger" onclick="retryQuery(${results.indexOf(result)})">
+                                        🔄 Retry Query
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = resultsHTML;
+
+            // Update statistics
+            document.getElementById('successCount').textContent = successCount;
+            document.getElementById('errorCount').textContent = errorCount;
+            document.getElementById('totalCount').textContent = results.length;
+            document.getElementById('executionTime').textContent = totalExecutionTime.toFixed(2) + 's';
+
+            // Update pipeline status
+            updatePipelineStatus(successCount, errorCount);
+        }
+
+        // Function to update pipeline status
+        function updatePipelineStatus(successCount, errorCount) {
+            const steps = document.querySelectorAll('.pipeline-step');
+            const runningStep = steps[2]; // SQL Scripts Execution step
+            const stepIcon = runningStep.querySelector('.step-icon');
+            const stepText = runningStep.querySelector('p');
+
+            if (errorCount > 0) {
+                stepIcon.className = 'step-icon error';
+                stepIcon.textContent = '✗';
+                stepText.textContent = `Completed with ${errorCount} error${errorCount > 1 ? 's' : ''}`;
+            } else {
+                stepIcon.className = 'step-icon success';
+                stepIcon.textContent = '✓';
+                stepText.textContent = `All ${successCount} queries executed successfully`;
+            }
+        }
+
+        // Utility functions
+        function copyQuery(query) {
+            navigator.clipboard.writeText(query).then(() => {
+                alert('Query copied to clipboard!');
+            });
+        }
+
+        function exportResults(index) {
+            // Implement export functionality
+            alert(`Exporting results for query ${index + 1}`);
+        }
+
+        function retryQuery(index) {
+            // Implement retry functionality
+            alert(`Retrying query ${index + 1}`);
+        }
+
+        // Initialize the page
+        async function init() {
+            const results = await fetchResults();
+            renderResults(results);
+            
+            // Update Allure report link
+            const allureLink = document.getElementById('allureReportLink');
+            allureLink.href = '/allure-report/index.html'; // Update with actual Allure report URL
+        }
+
+        // Load results when page loads
+        window.addEventListener('load', init);
+
+        // Auto-refresh every 30 seconds
+        setInterval(async () => {
+            const results = await fetchResults();
+            renderResults(results);
+        }, 30000);
+    </script>
+</body>
+</html>

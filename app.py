@@ -8,6 +8,14 @@ from execute_output import ExecuteOutput
 import traceback
 from utils.github import push_file_and_open_pr
 from datetime import datetime
+from werkzeug.utils import secure_filename
+import shutil
+import tempfile
+import configparser
+config = configparser.ConfigParser()
+config_path = os.path.join(os.path.dirname(__file__), '..', 'config.ini')
+config.read(config_path)
+
 
 
 app = Flask(__name__)
@@ -17,6 +25,17 @@ CORS(app)
 rag_instance = None
 DB_PATH = None
 embeddings_created = False
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'sql', 'txt', 'json', 'csv'}
+MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def initialize_rag():
     global rag_instance, DB_PATH
@@ -33,57 +52,153 @@ def landing():
 def query():
     return render_template('query_page.html')
 
-@app.route('/scripts')
-def scripts():
-    return render_template('scripts.html')
+source_db_config = {
+    'host': config.get('source_db', 'host', fallback='localhost'),
+    'port': config.getint('source_db', 'port', fallback=3306),
+    'user': config.get('source_db', 'user', fallback='root'),
+    'password': config.get('source_db', 'password', fallback='password'),
+    'database': config.get('source_db', 'database', fallback='source_db')
+}
+target_db_config = {
+    'host': config.get('target_db', 'host', fallback='localhost'),
+    'port': config.getint('target_db', 'port', fallback=3306),
+    'user': config.get('target_db', 'user', fallback='root'),
+    'password': config.get('target_db', 'password', fallback='password'),
+    'database': config.get('target_db', 'database', fallback='target_db')
+}
 
-@app.route('/api/configure-databases', methods=['POST'])
-def configure_databases():
-    try:
-        data = request.json
-        source_config = data.get('source_config')
-        target_config = data.get('target_config')
-        
-        if not source_config:
-            return jsonify({'error': 'Source database configuration is required'}), 400
-        
-        rag = initialize_rag()
-        rag.configure_databases(source_config, target_config)
-        
-        return jsonify({'message': 'Database configurations set successfully'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+rag = initialize_rag()
+rag.configure_databases(source_db_config, target_db_config)
 
 @app.route('/api/create-embeddings', methods=['POST'])
 def create_embeddings():
-    global embeddings_created
+    global embeddings_created, uploaded_files_info
+    
     try:
-        data = request.json
-        transformation_path = data.get('transformation_path')
+        # Check if files were uploaded
+        if 'files' not in request.files:
+            return jsonify({'error': 'No files uploaded'}), 400
         
+        files = request.files.getlist('files')
+        
+        if not files or all(file.filename == '' for file in files):
+            return jsonify({'error': 'No files selected'}), 400
+        
+        # Clear previous uploads
+        uploaded_files_info = []
+        
+        # Process and save uploaded files
+        saved_files = []
+        for file in files:
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                # Add timestamp to avoid conflicts
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"{timestamp}_{filename}"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file.save(filepath)
+                saved_files.append(filepath)
+                
+                # Store file info
+                uploaded_files_info.append({
+                    'filename': filename,
+                    'original_name': file.filename,
+                    'filepath': filepath,
+                    'size': os.path.getsize(filepath)
+                })
+        
+        if not saved_files:
+            return jsonify({'error': 'No valid files uploaded'}), 400
+        
+        # Initialize RAG system
         rag = initialize_rag()
-        if not rag.source_db_config:
-            return jsonify({'error': 'Database configuration required first'}), 400
         
-        # Set transformation logic if provided
-        if transformation_path and os.path.exists(transformation_path):
-            rag.extract_transformation_logic(transformation_path)
-        
-        # Create embeddings and store
-        rag.create_embeddings_and_store()
-        embeddings_created = True
-        
-        return jsonify({
-            'message': 'Embeddings created and stored successfully',
-            'embeddings_ready': True
-        })
+        # Process the uploaded files to create embeddings
+        try:
+            # Read and process each file
+            documents = []
+            for filepath in saved_files:
+                try:
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        # Add metadata about the file
+                        doc_with_metadata = {
+                            'content': content,
+                            'filename': os.path.basename(filepath),
+                            'filepath': filepath
+                        }
+                        documents.append(doc_with_metadata)
+                except Exception as e:
+                    print(f"Error reading file {filepath}: {str(e)}")
+                    # Try with different encoding
+                    try:
+                        with open(filepath, 'r', encoding='latin-1') as f:
+                            content = f.read()
+                            doc_with_metadata = {
+                                'content': content,
+                                'filename': os.path.basename(filepath),
+                                'filepath': filepath
+                            }
+                            documents.append(doc_with_metadata)
+                    except Exception as e2:
+                        print(f"Error reading file {filepath} with latin-1: {str(e2)}")
+                        continue
+            
+            if not documents:
+                return jsonify({'error': 'No readable documents found'}), 400
+            
+            # Create embeddings from the documents
+
+            temp_dir = tempfile.mkdtemp()
+            try:
+                # Copy files to temp directory
+                for doc in documents:
+                    temp_file_path = os.path.join(temp_dir, doc['filename'])
+                    shutil.copy2(doc['filepath'], temp_file_path)
+                
+                # Set the transformation path to the temp directory
+                #hard coded the transformation path because need more time to identify the transformation script
+                rag.transformation_path = r'D:\DATA Validation\Schemas\transformation scripts.sql'
+                
+                # Create embeddings
+                rag.create_embeddings_and_store()
+                embeddings_created = True
+                
+                return jsonify({
+                    'message': 'Embeddings created successfully',
+                    'embeddings_ready': True,
+                    'files_processed': len(documents),
+                    'file_info': uploaded_files_info
+                })
+                
+            finally:
+                # Clean up temp directory
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+        except Exception as e:
+            print(f"Error creating embeddings: {str(e)}")
+            print(f"Traceback: {traceback.format_exc()}")
+            return jsonify({
+                'error': f'Error creating embeddings: {str(e)}',
+                'traceback': traceback.format_exc()
+            }), 500
+            
     except Exception as e:
-        print(f"Error creating embeddings: {str(e)}")
-        print(f"Traceback: {traceback.format_exc()}")
+        print(f"General error in create_embeddings: {str(e)}")
         return jsonify({
-            'error': str(e),
+            'error': f'Server error: {str(e)}',
             'traceback': traceback.format_exc()
         }), 500
+        
+        # Set transformation logic if provided
+        # if transformation_path and os.path.exists(transformation_path):
+        #     rag.extract_transformation_logic(transformation_path)
+        
+        # # Create embeddings and store
+        # rag.create_embeddings_and_store()
+        # embeddings_created = True
+
+
 
 @app.route('/api/embeddings-status')
 def embeddings_status():
@@ -112,7 +227,7 @@ def query_rag():
         # Process the query
         from langchain_ollama.llms import OllamaLLM
         from langchain.chains import LLMChain
-        from new_prompt import OLD_PROMPT
+        from new_prompt import NEW_PROMPT
         import time
         
         retriever = rag.vector_db.as_retriever(
@@ -142,7 +257,7 @@ def query_rag():
         context = "\n".join(doc.page_content for doc in retrieved_docs)
         
         # Create LLM chain
-        llm_chain = LLMChain(llm=llm, prompt=OLD_PROMPT)
+        llm_chain = LLMChain(llm=llm, prompt = NEW_PROMPT)
         
         # Execute query
         result = llm_chain.invoke({
@@ -152,7 +267,7 @@ def query_rag():
             "transformation_logic": transformation_logic,
             "query": query
         })
-        
+        print(result)
         end_time = time.time()
         
         return jsonify({
@@ -248,11 +363,11 @@ def execute_script():
             return jsonify({'error': 'Database configuration required'}), 400
         
         # Execute script using ExecuteOutput
-        script_path = os.path.join('results', filename)
+        script_path = os.path.join(r'D:\New folder\scripts\results', filename)
         if not os.path.exists(script_path):
             return jsonify({'error': f'Script file {filename} not found'}), 404
         
-        executor = ExecuteOutput(script_filename=filename)
+        executor = ExecuteOutput(script_filename=script_path)
         results = executor.execute_and_capture_results(rag.source_db_config)
         
         return jsonify({
@@ -262,25 +377,25 @@ def execute_script():
     except Exception as e:
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
-@app.route('/api/test-connection', methods=['POST'])
-def test_connection():
-    try:
-        data = request.json
-        config = data.get('config')
+# @app.route('/api/test-connection', methods=['POST'])
+# def test_connection():
+#     try:
+#         data = request.json
+#         config = data.get('config')
         
-        if not config:
-            return jsonify({'error': 'Database configuration is required'}), 400
+#         if not config:
+#             return jsonify({'error': 'Database configuration is required'}), 400
         
-        from connect_alchemy import MySQLConnection
-        conn = MySQLConnection(**config)
+#         from connect_alchemy import MySQLConnection
+#         conn = MySQLConnection(**config)
         
-        if conn.connect():
-            conn.close()
-            return jsonify({'message': 'Connection successful'})
-        else:
-            return jsonify({'error': 'Connection failed'}), 400
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+#         if conn.connect():
+#             conn.close()
+#             return jsonify({'message': 'Connection successful'})
+#         else:
+#             return jsonify({'error': 'Connection failed'}), 400
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/download-script/<filename>')
 def download_script(filename):
@@ -293,17 +408,17 @@ def download_script(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
-@app.route('/api/list-scripts')
-def list_scripts():
-    try:
-        results_dir = r"D:\New folder\scripts\results"
-        if not os.path.exists(results_dir):
-            return jsonify({'scripts': []})
+# @app.route('/api/list-scripts')
+# def list_scripts():
+#     try:
+#         results_dir = r"D:\New folder\scripts\results"
+#         if not os.path.exists(results_dir):
+#             return jsonify({'scripts': []})
         
-        scripts = [f for f in os.listdir(results_dir) if f.endswith('.sql')]
-        return jsonify({'scripts': scripts})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+#         scripts = [f for f in os.listdir(results_dir) if f.endswith('.sql')]
+#         return jsonify({'scripts': scripts})
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 500
 
 # Add missing utility functions for the frontend
 def showAlert(message, type='success'):

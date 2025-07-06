@@ -1,28 +1,23 @@
 import os
 from langchain_community.vectorstores import FAISS
+from langchain_ollama.embeddings import OllamaEmbeddings
+from langchain_ollama.llms import OllamaLLM
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import DirectoryLoader
 from langchain.chains import RetrievalQA
 from langchain.chains import LLMChain
 from langchain_community.document_loaders import TextLoader
-from langchain_ollama.embeddings import OllamaEmbeddings
-from langchain_ollama.llms import OllamaLLM
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationalRetrievalChain
-from multiprocessing import Pool
-from langchain_community.document_loaders import (TextLoader, PythonLoader, 
-                                                        JSONLoader, BSHTMLLoader)
 import time
 from chunking import EnhancedChunker
 from connect_alchemy import MySQLConnection
 from typing import Dict, List, Optional
-import pandas as pd
-from new_prompt import VALIDATION_PROMPT, OLD_PROMPT
+from new_prompt import VALIDATION_PROMPT, OLD_PROMPT, NEW_PROMPT
 from execute_output import ExecuteOutput
 import sqlparse
 
 class CodebaseRAG:
     def __init__(self, db_path: str):
+        """ Initializes the CodebaseRAG instance """
         self.db_path = db_path
         self.embed_model = "nomic-embed-text"  # or mxbai-embed-large for code
         self.embedding = OllamaEmbeddings(model=self.embed_model)
@@ -33,10 +28,12 @@ class CodebaseRAG:
         self.transformation_path = None
 
     def configure_databases(self, source_config: Dict, target_config: Optional[Dict] = None):
+        """ Initializes the Database configurations """
         self.source_db_config = source_config
         self.target_db_config = target_config
     
-    def extract_transformation_logic(self, path: str) -> str:
+    def extract_transformation_logic(self, path: str) -> list:
+        """Extracts SQL statements from all files in the given directory."""
         self.transformation_path = path
         with open(path, 'r') as file:
             results = file.read()
@@ -44,12 +41,9 @@ class CodebaseRAG:
         statements = sqlparse.split(results)
 
         return statements
-             
-
-    def extract_database_into(self, database: Dict):
-        return database
 
     def extract_schema_info(self, connection_config: Dict) -> List[Dict]:
+        """ this is used to extract the schema information from the database """
         conn = MySQLConnection(**connection_config)
         schema_info = []
         
@@ -105,6 +99,7 @@ class CodebaseRAG:
         return schema_info
 
     def profile_data(self, connection_config: Dict) -> List[Dict]:
+        """ Profiles the data in the database """
         conn = MySQLConnection(**connection_config)
         profile_info = []
         
@@ -165,6 +160,7 @@ class CodebaseRAG:
         return profile_info
 
     def create_embeddings_and_store(self):
+        """ used to create embeddings"""
         if not self.source_db_config:
             raise ValueError("Source database configuration is required")
             
@@ -252,7 +248,9 @@ class CodebaseRAG:
                         'source': 'target_db'
                     }
                 ))
-        database_info = self.extract_database_into(self.source_db_config)
+
+        # this is embedding the database information but this can be changed to a JSON file or something else
+        database_info = self.source_db_config
         documents.append(Document(
                     page_content="Source Database Information:\n" + str(database_info),
                     metadata={
@@ -260,14 +258,20 @@ class CodebaseRAG:
                     }
         ))
 
-        database_info = self.extract_database_into(self.target_db_config)
+        database_info = self.target_db_config
         documents.append(Document(
                     page_content="Target Database Information:\n" + str(database_info),
                     metadata={
                         'source': 'target_db'
                     }
         ))
+
         
+        # CAN EMBED THE UPLOADED FILES AS WELL
+        # function not written
+
+
+
         # Chunk documents using enhanced chunker
         chunks = self.chunker.smart_chunk_documents(documents)
         
@@ -281,8 +285,9 @@ class CodebaseRAG:
         # Save the index
         self.vector_db.save_local(self.db_path)
 
-    #NOT USING FOR NOW - JUST TESTING ONLY ONE NEW PROMPT
+    #NOT USING FOR NOW - NEED TO CHANGE SO THAT IT CAN CHANGE BTW VALIDATION AND NORMAL QUERIES
     def classify_query(self, query: str) -> str:
+
         query = query.lower()
         
         if "compare" in query or "source vs target" in query or "etl" in query:
@@ -299,76 +304,64 @@ class CodebaseRAG:
     def select_llm_optimized(self, query: str) -> tuple:
         query_lower = query.lower()
         
-        # # Simple SQL operations - Use CodeLlama (fastest)
-        # if any(word in query_lower for word in ["select", "count", "null", "missing", "empty"]):
-        #     return ("codellama:7b", {
-        #         "temperature": 0.0,
-        #         "top_k": 1,
-        #         "top_p": 0.1,
-        #         "num_predict": 256,
-        #         "stop": ["```", ";", "\n\n"],
-        #         "num_ctx": 2048,
-        #         "num_batch": 16
-        #     })
+        # Simple SQL operations - Use CodeLlama (fastest)
+        if any(word in query_lower for word in ["select", "count", "null", "missing", "empty"]):
+            return ("codellama:7b", {
+                "temperature": 0.0,
+                "top_k": 1,
+                "top_p": 0.1,
+                "num_predict": 256,
+                "stop": ["```", ";", "\n\n"],
+                "num_ctx": 2048,
+                "num_batch": 16
+            })
         
-        # # Complex transformations/ETL - Use DeepSeek R1 (best reasoning)
-        # elif any(word in query_lower for word in ["transform", "etl", "complex", "join", "migration", "compare"]):
-        #     return ("deepseek-r1:8b", {
-        #         "temperature": 0.1,
-        #         "top_k": 5,
-        #         "top_p": 0.8,
-        #         "repeat_penalty": 1.05,
-        #         "num_predict": 1024,
-        #         "stop": ["```", "\n\n\n"],
-        #         "num_ctx": 4096,
-        #         "num_batch": 8
-        #     })
+        # Complex transformations/ETL - Use DeepSeek R1 (best reasoning)
+        elif any(word in query_lower for word in ["transform", "etl", "complex", "join", "migration", "compare"]):
+            return ("deepseek-r1:8b", {
+                "temperature": 0.1,
+                "top_k": 5,
+                "top_p": 0.8,
+                "repeat_penalty": 1.05,
+                "num_predict": 1024,
+                "num_ctx": 4096,
+                "num_batch": 8
+            })
         
-        # # Validation scripts - Use DeepSeek R1 with focused parameters
-        # elif any(word in query_lower for word in ["validate", "check", "verify", "test"]):
-        #     return ("deepseek-r1:8b", {
-        #         "temperature": 0.05,
-        #         "top_k": 3,
-        #         "top_p": 0.7,
-        #         "repeat_penalty": 1.02,
-        #         "num_predict": 512,
-        #         "stop": ["```", ";", "\n\n"],
-        #         "num_ctx": 3072
-        #     })
+        # Validation scripts - Use DeepSeek R1 with focused parameters
+        elif any(word in query_lower for word in ["validate", "check", "verify", "test"]):
+            return ("deepseek-r1:8b", {
+                "temperature": 0.05,
+                "top_k": 3,
+                "top_p": 0.7,
+                "repeat_penalty": 1.02,
+                "num_predict": 512,
+                "num_ctx": 3072
+            })
         
-        # # Analysis and explanations - Use Mistral
-        # elif any(word in query_lower for word in ["explain", "analyze", "describe", "report", "why", "how"]):
-        #     return ("mistral:7b", {
-        #         "temperature": 0.2,
-        #         "top_k": 10,
-        #         "top_p": 0.9,
-        #         "repeat_penalty": 1.1,
-        #         "num_predict": 800,
-        #         "stop": ["```", "\n\n\n"],
-        #         "num_ctx": 3072,
-        #         "mirostat": 2,
-        #         "mirostat_tau": 5.0,
-        #         "mirostat_eta": 0.1
-        #     })
+        # Analysis and explanations - Use Mistral
+        elif any(word in query_lower for word in ["explain", "analyze", "describe", "report", "why", "how"]):
+            return ("mistral:7b", {
+                "temperature": 0.2,
+                "top_k": 10,
+                "top_p": 0.9,
+                "repeat_penalty": 1.1,
+                "num_predict": 800,
+                "num_ctx": 3072,
+                "mirostat": 2,
+                "mirostat_tau": 5.0,
+                "mirostat_eta": 0.1
+            })
         
-        # # Default: Fast CodeLlama for general queries
-        # else:
-        return ("codellama:7b", {
+        # Default: Fast CodeLlama for general queries
+        else:
+            return ("codellama:7b", {
                 "temperature": 0.1,  # Slightly higher for variety
                 "top_k": 5,          # Allow more token choices
                 "num_predict": 1024, # Increase token limit significantly
                 "num_ctx": 2048
             })
-    def select_llm(self, query: str) -> str:
-        query = query.lower()
-        if "code" in query or "sql" in query or "generate" in query:
-            return "codellama:7b"
-        elif len(query) > 300 or "explain" in query or "describe" in query:
-            return "llama3"
-
-
-
-
+    
     def save_to_file(self,answer: str, output_type: str):
         if output_type == "script":
             output_format = "sql" 
@@ -445,6 +438,8 @@ class CodebaseRAG:
 
             # Classify query and select appropriate LLMs
             # query_type = self.classify_query(query)
+            #^^^^ need to do so that the user can generate normal queries as well
+
             model_name, params = self.select_llm_optimized(query)
             print(model_name)
             
@@ -453,24 +448,7 @@ class CodebaseRAG:
                 **params
             )
             
-            # Use appropriate prompt template
-            # if query_type == "comparison" and self.target_db_config:
-            #     # For comparisons, get both contexts
-            #     all_docs = self.vector_db.similarity_search(query, k=6)
-            #     source_docs = [doc for doc in all_docs if doc.metadata.get("source") == "source_db"]
-            #     target_docs = [doc for doc in all_docs if doc.metadata.get("source") == "target_db"]
-                
-            #     source_context = "\n".join([doc.page_content for doc in source_docs[:3]])
-            #     target_context = "\n".join([doc.page_content for doc in target_docs[:3]])
-                
-            #     prompt = PROMPT_TEMPLATES[query_type].format(
-            #         source_context=source_context,
-            #         target_context=target_context,
-            #         question=query
-            #     )
-                
-            #     result = {"result": llm.invoke(prompt)}
-            # For other query types, use standard retrieval
+            # QUERY TYPE  - VALIDAITON AND NORMAL QUERY
 
             # Load transformation logic once
             if hasattr(self, 'transformation_logic_path'):
@@ -484,19 +462,9 @@ class CodebaseRAG:
             retrieved_docs = retriever.invoke(query)
             context = "\n".join(doc.page_content for doc in retrieved_docs)
 
-
-            # qa = RetrievalQA.from_chain_type(
-            #         llm=llm,
-            #         retriever=retriever,
-            #         return_source_documents=True,
-            #         chain_type_kwargs={
-            #             "prompt": NEW_PROMPT
-            #         }
-            #     )
-
             llm_chain = LLMChain(
                     llm=llm,
-                    prompt=OLD_PROMPT
+                    prompt=NEW_PROMPT
                 )
 
 
@@ -511,7 +479,7 @@ class CodebaseRAG:
                 "source_db": self.source_db_config.get('database', 'source_db'),
                 "target_db": self.target_db_config.get('database', 'target_db'),
                 "transformation_logic": transformation_logic,
-                "query": query  # or "question" — depending on your NEW_PROMPT definition
+                "query": query
             })
             end_time = time.time()
             print(f"⏱️ Query processed in {end_time - start_time:.2f} seconds")

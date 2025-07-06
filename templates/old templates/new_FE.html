@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG System - Data Validation Platform</title>
+    <link rel="stylesheet" href="static/main.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 RAG Data Validation Platform</h1>
+            <p>Automated Schema Analysis & Validation Pipeline</p>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="nav-tab active" onclick="showPage('upload')">📁 Upload Schemas</button>
+            <button class="nav-tab" onclick="showPage('query')">🔍 Query & Validate</button>
+            <button class="nav-tab" onclick="showPage('dashboard')">📊 Dashboard</button>
+        </div>
+
+        <!-- Page 1: Upload Schemas -->
+        <div id="upload" class="page active">
+            <h2>📁 Upload Database Schemas</h2>
+            <p>Upload your database schema files to create embeddings for the RAG system.</p>
+            
+            <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📁</div>
+                <h3>Drop schema files here or click to browse</h3>
+                <p>Supported formats: .sql, .txt, .json, .csv</p>
+                <input type="file" id="fileInput" multiple accept=".sql,.txt,.json,.csv" style="display: none;">
+            </div>
+
+            <div id="uploadedFiles" class="hidden">
+                <h3>Uploaded Files:</h3>
+                <ul id="fileList" class="file-list"></ul>
+            </div>
+
+            <div class="loading" id="uploadLoading">
+                <div class="spinner"></div>
+                <p>Processing schemas and creating embeddings...</p>
+            </div>
+
+            <div id="uploadResults" class="hidden">
+                <div class="alert alert-success">
+                    <strong>✅ Success!</strong> Schema embeddings created successfully.
+                </div>
+                <button class="btn btn-primary" onclick="showPage('query')">Next: Query System →</button>
+            </div>
+        </div>
+
+        <!-- Page 2: Query & Validate -->
+        <div id="query" class="page">
+            <h2>🔍 Query & Validation</h2>
+            <p>Enter your validation queries to generate SQL scripts and create GitHub pull requests.</p>
+            
+            <div class="query-section">
+                <label for="queryInput"><strong>Enter your query:</strong></label>
+                <textarea id="queryInput" class="query-input" placeholder="Example: Create validation scripts to check for null values in the customer table..."></textarea>
+                <button class="btn btn-primary" onclick="executeQuery()">🚀 Execute Query</button>
+            </div>
+
+            <div class="loading" id="queryLoading">
+                <div class="spinner"></div>
+                <p>Processing query and generating validation scripts...</p>
+            </div>
+
+            <div id="queryResults" class="result-section hidden">
+                <h3>🤖 Generated Response:</h3>
+                <div id="llmResponse" class="code-block"></div>
+                
+                <div id="prSection" class="hidden">
+                    <h4>📋 GitHub Integration:</h4>
+                    <p>Script saved and pushed to GitHub repository.</p>
+                    <a id="prLink" href="#" target="_blank" class="pr-link">View Pull Request</a>
+                </div>
+            </div>
+
+            <div id="queryHistory" class="hidden">
+                <h3>📝 Query History:</h3>
+                <div class="table-container">
+                    <table class="results-table">
+                        <thead>
+                            <tr>
+                                <th>Query</th>
+                                <th>Status</th>
+                                <th>PR Link</th>
+                                <th>Execution Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page 3: Dashboard -->
+        <div id="dashboard" class="page">
+            <h2>📊 Validation Dashboard</h2>
+            <p>Monitor your validation results and track execution metrics.</p>
+            
+            <div class="dashboard-grid">
+                <div class="dashboard-card metric-card total">
+                    <div class="metric-value" id="totalQueries">0</div>
+                    <div class="metric-label">Total Queries</div>
+                </div>
+                <div class="dashboard-card metric-card passed">
+                    <div class="metric-value" id="passedQueries">0</div>
+                    <div class="metric-label">Passed</div>
+                </div>
+                <div class="dashboard-card metric-card failed">
+                    <div class="metric-value" id="failedQueries">0</div>
+                    <div class="metric-label">Failed</div>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>📈 Execution Progress</h3>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <p id="progressText">0% Complete</p>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>🎯 Allure Test Results</h3>
+                <div id="allureResults">
+                    <p>No test results available yet. Execute queries to see Allure reports.</p>
+                </div>
+                <button class="btn btn-primary" onclick="generateAllureReport()">Generate Allure Report</button>
+            </div>
+
+            <div class="execution-results" id="executionResults">
+                <h3>⚡ Recent Executions:</h3>
+                <div id="executionList"></div>
+            </div>
+
+            <div class="jira-section" id="jiraSection" style="display: none;">
+                <h3>🎟️ JIRA Integration</h3>
+                <p>Failed validations have been automatically reported to JIRA.</p>
+                <div id="jiraTickets"></div>
+                <button class="btn btn-primary" onclick="syncWithJira()">Sync with JIRA</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let uploadedFiles = [];
+        let queryHistory = [];
+        let executionResults = [];
+        let allureData = [];
+
+        // Page navigation
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.remove('active');
+            });
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(pageId).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // File upload handling
+        document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+
+        // Drag and drop functionality
+        const uploadArea = document.querySelector('.upload-area');
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('drop', handleDrop);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            processFiles(files);
+        }
+
+        function handleFileUpload(e) {
+            const files = e.target.files;
+            processFiles(files);
+        }
+
+        function processFiles(files) {
+            uploadedFiles = Array.from(files);
+            displayUploadedFiles();
+            createEmbeddings();
+        }
+
+        function displayUploadedFiles() {
+            const fileList = document.getElementById('fileList');
+            const uploadedSection = document.getElementById('uploadedFiles');
+            
+            fileList.innerHTML = '';
+            uploadedFiles.forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'file-item';
+                li.innerHTML = `
+                    <span>📄 ${file.name}</span>
+                    <span class="status-badge status-success">Uploaded</span>
+                `;
+                fileList.appendChild(li);
+            });
+            
+            uploadedSection.classList.remove('hidden');
+        }
+
+        async function createEmbeddings() {
+            const loading = document.getElementById('uploadLoading');
+            const results = document.getElementById('uploadResults');
+            
+            loading.classList.add('active');
+            
+            try {
+                // Simulate API call to create embeddings
+                const formData = new FormData();
+                uploadedFiles.forEach(file => {
+                    formData.append('files', file);
+                });
+
+                const response = await fetch('/api/create-embeddings', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                // Simulate processing time
+                await new Promise(resolve => setTimeout(resolve, 3000));
+
+                loading.classList.remove('active');
+                results.classList.remove('hidden');
+                
+                showAlert('Embeddings created successfully!', 'success');
+            } catch (error) {
+                loading.classList.remove('active');
+                showAlert('Error creating embeddings: ' + error.message, 'error');
+            }
+        }
+
+        async function executeQuery() {
+            const queryInput = document.getElementById('queryInput');
+            const query = queryInput.value.trim();
+            
+            if (!query) {
+                showAlert('Please enter a query', 'warning');
+                return;
+            }
+
+            const loading = document.getElementById('queryLoading');
+            const results = document.getElementById('queryResults');
+            const history = document.getElementById('queryHistory');
+            
+            loading.classList.add('active');
+            results.classList.add('hidden');
+            
+            try {
+                // Simulate API call to execute query
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: query })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Query execution failed');
+                }
+
+                const data = await response.json();
+                
+                // Display LLM response
+                document.getElementById('llmResponse').textContent = data.answer;
+                
+                // Save script and create PR
+                const saveResponse = await fetch('/api/save-script', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        answer: data.answer,
+                        query_type: 'validation',
+                        filename: `validation_${Date.now()}`
+                    })
+                });
+
+                if (saveResponse.ok) {
+                    const saveData = await saveResponse.json();
+                    document.getElementById('prLink').href = saveData.pr_url;
+                    document.getElementById('prSection').classList.remove('hidden');
+                }
+
+                // Add to history
+                queryHistory.push({
+                    query: query,
+                    status: 'success',
+                    prUrl: saveData?.pr_url || '#',
+                    executionTime: data.processing_time || 0,
+                    timestamp: new Date().toISOString()
+                });
+
+                updateQueryHistory();
+                updateDashboard();
+                
+                loading.classList.remove('active');
+                results.classList.remove('hidden');
+                history.classList.remove('hidden');
+                
+            } catch (error) {
+                loading.classList.remove('active');
+                showAlert('Error executing query: ' + error.message, 'error');
+                
+                // Add failed query to history
+                queryHistory.push({
+                    query: query,
+                    status: 'failed',
+                    prUrl: '#',
+                    executionTime: 0,
+                    timestamp: new Date().toISOString()
+                });
+                updateQueryHistory();
+                updateDashboard();
+            }
+        }
+
+        function updateQueryHistory() {
+            const tbody = document.getElementById('historyTableBody');
+            tbody.innerHTML = '';
+            
+            queryHistory.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${item.query.substring(0, 50)}...</td>
+                    <td><span class="status-badge status-${item.status}">${item.status}</span></td>
+                    <td><a href="${item.prUrl}" target="_blank" class="pr-link">View PR</a></td>
+                    <td>${item.executionTime}s</td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function updateDashboard() {
+            const total = queryHistory.length;
+            const passed = queryHistory.filter(q => q.status === 'success').length;
+            const failed = total - passed;
+            
+            document.getElementById('totalQueries').textContent = total;
+            document.getElementById('passedQueries').textContent = passed;
+            document.getElementById('failedQueries').textContent = failed;
+            
+            const progressPercent = total > 0 ? (passed / total) * 100 : 0;
+            document.getElementById('progressFill').style.width = progressPercent + '%';
+            document.getElementById('progressText').textContent = `${Math.round(progressPercent)}% Complete`;
+            
+            // Show JIRA section if there are failed queries
+            if (failed > 0) {
+                document.getElementById('jiraSection').style.display = 'block';
+                updateJiraTickets(failed);
+            }
+        }
+
+        function updateJiraTickets(failedCount) {
+            const jiraTickets = document.getElementById('jiraTickets');
+            jiraTickets.innerHTML = `
+                <div class="alert alert-warning">
+                    <strong>⚠️ ${failedCount} Failed Validation(s)</strong><br>
+                    JIRA tickets have been automatically created for failed validations.
+                </div>
+            `;
+        }
+
+        async function generateAllureReport() {
+            try {
+                // Simulate Allure report generation
+                const allureResults = document.getElementById('allureResults');
+                allureResults.innerHTML = `
+                    <div class="alert alert-success">
+                        <strong>✅ Allure Report Generated!</strong><br>
+                        Test results have been compiled and are ready for review.
+                    </div>
+                    <div class="code-block">
+                        {
+                            "name": "Database Validation Tests",
+                            "tests": ${queryHistory.length},
+                            "passed": ${queryHistory.filter(q => q.status === 'success').length},
+                            "failed": ${queryHistory.filter(q => q.status === 'failed').length},
+                            "timestamp": "${new Date().toISOString()}"
+                        }
+                    </div>
+                `;
+                
+                showAlert('Allure report generated successfully!', 'success');
+            } catch (error) {
+                showAlert('Error generating Allure report: ' + error.message, 'error');
+            }
+        }
+
+        async function syncWithJira() {
+            try {
+                // Simulate JIRA sync
+                showAlert('Syncing with JIRA...', 'warning');
+                
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                showAlert('Successfully synced with JIRA! All failed validations have been reported.', 'success');
+            } catch (error) {
+                showAlert('Error syncing with JIRA: ' + error.message, 'error');
+            }
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.innerHTML = message;
+            
+            document.body.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+
+        // Initialize dashboard on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateDashboard();
+        });
+
+        // Auto-refresh dashboard every 30 seconds
+        setInterval(updateDashboard, 30000);
+    </script>
+</body>
+</html>
