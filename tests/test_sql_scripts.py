@@ -1,7 +1,7 @@
 import os, pathlib, pytest, pandas as pd, allure
 from connect_alchemy import MySQLConnection   # already in your repo
 
-# trying to connect SQL after merging branch
+# trying to connect SQL after merging branch and connect to allure
 
 # -------- DB fixture ---------------------------------------------------------
 @pytest.fixture(scope="session")
