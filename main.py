@@ -6,6 +6,7 @@ DB_PATH = check_for_file()
 
 rag = CodebaseRAG(DB_PATH)
 
+# CHANGE THE NAMES ACCORDINGLY
 # Configure databases
 source_config = {
     'host': 'localhost',

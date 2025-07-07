@@ -54,6 +54,8 @@ cd your-repo-name
 Set up the prerequisites mentioned in the following doc:
 https://docs.google.com/document/d/1e-SbAdlAjwSB_vV4W7DpWEcCiY2pqMkNno_fcrYiT_s/edit?tab=t.0
 
+Also, Change the file paths in the config.ini
+
 ### 3. Set up Python environment
 
 pip install -r requirements.txt

@@ -19,19 +19,19 @@ config_path = os.path.join(os.path.dirname(__file__), '..', 'config.ini')
 config.read(config_path)
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # Add secret key for session management
+
 CORS(app)
 
 # Global variables
 rag_instance = None
 DB_PATH = None
 embeddings_created = False
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'sql', 'txt', 'json', 'csv'}
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+UPLOAD_FOLDER = config['FOLDERS']['UPLOAD_FOLDER']
+ALLOWED_EXTENSIONS = config['FOLDERS']['ALLOWED_EXTENSIONS']
+MAX_CONTENT_LENGTH = config['FOLDERS']['MAX_CONTENT_LENGTH']  # 16MB max file size
 
-ALLURE_RESULTS_DIR = 'allure-results'   # raw JSON produced by pytest
-ALLURE_REPORT_DIR = 'allure-report'     # generated HTML dashboard
+ALLURE_RESULTS_DIR =  config['ALLURE']['ALLURE_RESULTS_DIR']   # raw JSON produced by pytest
+ALLURE_REPORT_DIR =  config['ALLURE']['ALLURE_REPORT_DIR']     # generated HTML dashboard
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
@@ -236,8 +236,10 @@ def create_embeddings():
                     shutil.copy2(doc['filepath'], temp_file_path)
                 
                 # Set the transformation path to the temp directory
+
                 #hard coded the transformation path because need more time to identify the transformation script
-                rag.transformation_path = r'D:\DATA Validation\Schemas\transformation scripts.sql'
+                # rag.transformation_path = r'D:\DATA Validation\Schemas\transformation scripts.sql'
+                rag.transformation_path = config['FOLDERS']['TRANSFORMATION']
                 
                 # Create embeddings
                 rag.create_embeddings_and_store()
@@ -435,6 +437,8 @@ def execute_sql():
 
 @app.route('/api/save-script', methods=['POST'])
 def save_script():
+    # NEED TO CHANGE THE FOLDER FOR THE SAVING SCRIPTS AND
+    # INITIALIZE GIT IN THAT FOLDER AND THEN SET UP THE REPO FOR SCRITPS    
     try:
         data = request.json
         answer = data.get('answer')
@@ -455,6 +459,7 @@ def save_script():
             filename = f"{filename}.sql"
         
         output_file = r"D:\New folder\scripts\results\{}".format(filename)
+        # output_file = config['FOLDERS']['SCRIPTS'] - need to change this file
         
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(content)

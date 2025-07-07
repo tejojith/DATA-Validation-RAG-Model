@@ -211,6 +211,7 @@
             width: 100%;
             border-collapse: collapse;
             font-size: 0.9em;
+            margin-top: 15px;
         }
 
         .result-table th,
@@ -377,6 +378,65 @@
             box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
         }
 
+        .sql-results-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+            border: 1px solid #e9ecef;
+        }
+
+        .sql-results-header {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .execution-status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .execution-status.success {
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+
+        .execution-status.error {
+            background: #ffeaa7;
+            color: #e74c3c;
+        }
+
+        .execution-status.pending {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .execute-btn {
+            background: #17a2b8;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s ease;
+        }
+
+        .execute-btn:hover {
+            background: #138496;
+        }
+
+        .execute-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
         @media (max-width: 768px) {
             .stats-grid {
                 grid-template-columns: 1fr;
@@ -477,8 +537,6 @@
     </div>
 
     <script>
-        
-
         // Function to fetch actual results from API
         async function fetchResults() {
             try {
@@ -491,6 +549,98 @@
                 return [];
             }
         }
+
+        // Function to execute SQL query
+        async function executeSQLQuery(resultId, sqlQuery) {
+            try {
+                const response = await fetch('/api/execute-sql', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        result_id: resultId,
+                        sql_query: sqlQuery
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Refresh the results to show updated data
+                    const results = await fetchResults();
+                    renderResults(results);
+                    return data.results;
+                } else {
+                    throw new Error(data.error || 'Execution failed');
+                }
+            } catch (error) {
+                console.error('Error executing SQL:', error);
+                alert('Error executing SQL: ' + error.message);
+                return null;
+            }
+        }
+
+        // Function to extract SQL from answer text
+        function extractSQLFromAnswer(answer) {
+            // Look for SQL code blocks
+            const sqlRegex = /```sql\n([\s\S]*?)\n```/g;
+            let match;
+            const sqlQueries = [];
+            
+            while ((match = sqlRegex.exec(answer)) !== null) {
+                sqlQueries.push(match[1].trim());
+            }
+            
+            if (sqlQueries.length > 0) {
+                return sqlQueries.join('\n\n');
+            }
+            
+            // Look for generic code blocks that might contain SQL
+            const codeRegex = /```\n([\s\S]*?)\n```/g;
+            while ((match = codeRegex.exec(answer)) !== null) {
+                const code = match[1].trim();
+                if (code.toUpperCase().includes('SELECT') || code.toUpperCase().includes('INSERT') || 
+                    code.toUpperCase().includes('UPDATE') || code.toUpperCase().includes('DELETE') || 
+                    code.toUpperCase().includes('CREATE') || code.toUpperCase().includes('ALTER')) {
+                    return code;
+                }
+            }
+            
+            return null;
+        }
+
+        // Function to render SQL execution results
+        function renderSQLResults(results) {
+            if (!results || results.length === 0) {
+                return '<p>No results returned</p>';
+            }
+            
+            let html = '<table class="result-table">';
+            
+            // Add headers
+            if (results.length > 0) {
+                html += '<thead><tr>';
+                Object.keys(results[0]).forEach(key => {
+                    html += `<th>${key}</th>`;
+                });
+                html += '</tr></thead>';
+            }
+            
+            // Add data rows
+            html += '<tbody>';
+            results.forEach(row => {
+                html += '<tr>';
+                Object.values(row).forEach(value => {
+                    html += `<td>${value !== null ? value : 'NULL'}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            
+            return html;
+        }
+
         // Function to render results
         function renderResults(results) {
             const container = document.getElementById('queryResults');
@@ -499,12 +649,17 @@
             let totalExecutionTime = 0;
 
             const resultsHTML = results.map((result, index) => {
-                const isSuccess = result.status === 'completed' && result.answer;
+                // A query is successful only if it has been executed and returned results
+                const isSuccess = result.status === 'completed' && result.answer && result.executed === true && result.execution_results;
                 const executionTime = result.processing_time || 0;
                 const queryText = result.query || 'N/A';
                 const answer = result.answer || '';
                 const error = result.error || '';
-
+                const executionError = result.execution_error || '';
+                
+                // Extract SQL from answer for execution
+                const sqlQuery = extractSQLFromAnswer(answer);
+                
                 if (isSuccess) successCount++;
                 else errorCount++;
                 totalExecutionTime += executionTime;
@@ -521,11 +676,43 @@
                             </div>
                         </div>
                         <div class="query-content">
-                            ${isSuccess ? `
+                            ${result.status === 'completed' && result.answer ? `
                                 <div class="row-count">
                                     🧠 Model: ${result.llm_model || 'N/A'} • ⏱️ ${executionTime}s • 🕒 ${new Date(result.timestamp).toLocaleString()}
                                 </div>
                                 <div class="query-text">${answer}</div>
+                                
+                                ${sqlQuery ? `
+                                    <div class="sql-results-container">
+                                        <div class="sql-results-header">
+                                            <span>SQL Execution Results:</span>
+                                            <div>
+                                                <span class="execution-status ${result.executed ? (result.execution_results ? 'success' : 'error') : 'pending'}">
+                                                    ${result.executed ? (result.execution_results ? 'Executed ✓' : 'Failed ✗') : 'Not Executed'}
+                                                </span>
+                                                ${!result.executed ? `
+                                                    <button class="execute-btn" onclick="executeSQLQuery(${result.id}, \`${sqlQuery.replace(/`/g, '\\`')}\`)">
+                                                        Execute SQL
+                                                    </button>
+                                                ` : ''}
+                                            </div>
+                                        </div>
+                                        ${result.executed ? (
+                                            result.execution_results ? `
+                                                <div class="row-count">
+                                                    📊 Rows returned: ${Array.isArray(result.execution_results) ? result.execution_results.length : 'N/A'}
+                                                </div>
+                                                ${renderSQLResults(result.execution_results)}
+                                            ` : `
+                                                <div class="error-message">
+                                                    ❌ SQL Execution Error: ${executionError || 'Unknown error occurred'}
+                                                </div>
+                                            `
+                                        ) : `
+                                            <div class="query-text">${sqlQuery}</div>
+                                        `}
+                                    </div>
+                                ` : ''}
                             ` : `
                                 <div class="error-message">
                                     ❌ Error: ${error}
@@ -535,7 +722,6 @@
                     </div>
                 `;
             }).join('');
-
 
             container.innerHTML = resultsHTML;
 
@@ -584,7 +770,6 @@
             alert(`Retrying query ${index + 1}`);
         }
 
-
         async function generateAllure() {
             const link = document.getElementById('allureReportLink');
             link.textContent = '⏳ Building Allure Report…';
@@ -613,7 +798,6 @@
                 link.style.pointerEvents = 'auto';
             }
         }
-
 
         // Initialize the page
         async function init() {
