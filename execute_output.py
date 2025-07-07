@@ -2,6 +2,8 @@ import os
 import sqlparse
 from connect_alchemy import MySQLConnection
 from typing import Dict, List
+import pandas as pd
+from datetime import datetime
 
 class ExecuteOutput:
     def __init__(self, script_filename: str):
@@ -28,7 +30,12 @@ class ExecuteOutput:
                 if cleaned and not cleaned.startswith('--'):  # Skip empty and comment lines
                     try:
                         result = conn.execute_query(cleaned)
-                        
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+                        # Create filename
+                        filename = f"outputs/result_{timestamp}.csv"
+                        result.to_csv(filename, index=False)
+
                         if result is not None and not result.empty:
                             results.append({
                                 'query': cleaned,

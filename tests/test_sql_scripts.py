@@ -5,7 +5,7 @@ from connect_alchemy import MySQLConnection   # already in your repo
 
 # -------- DB fixture ---------------------------------------------------------
 @pytest.fixture(scope="session")
-def db():
+def db(self):
     conn = MySQLConnection(
         host=os.environ["DB_HOST"],
         user=os.environ["DB_USER"],
@@ -18,7 +18,7 @@ def db():
     conn.close()
 
 # -------- Parametrise every *.sql in the chosen folder -----------------------
-SQL_DIR = pathlib.Path("scripts/sql")        # adjust if you store them elsewhere
+SQL_DIR = pathlib.Path(r"D:\New folder\scripts\results")        # adjust if you store them elsewhere
 @pytest.mark.parametrize("sql_path", SQL_DIR.glob("*.sql"))
 def test_run_sql(db, sql_path):
     query = sql_path.read_text()

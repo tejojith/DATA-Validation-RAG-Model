@@ -3,32 +3,46 @@ from langchain.prompts import PromptTemplate
 
 
 NEW_PROMPT = PromptTemplate(
-    input_variables=["context", "source_db", "target_db", "transformation_logic", "query"],
+    input_variables=[
+        "context",
+        "source_db",
+        "target_db",
+        "transformation_logic",
+        "query"          # free‑form NL request that may contain multiple asks
+    ],
     template="""
-You are an expert SQL query generator and data engineer.
+You are a senior data - engineering consultant and expert SQL author.
 
-You will receive:
-1. **Context** - schema definitions (tables, columns, datatypes, sample data), database engine type (e.g., PostgreSQL, MySQL, etc.), and any relevant business logic or transformations.
-2. **Query Request** - a natural language instruction specifying what the user wants to extract, filter, join, calculate, or summarize.
+You always:
 
-Your job is to:
-- Generate a ** valid, executable SQL query**.
-- Ensure the query is **precise**, follows best practices, and uses appropriate joins, filters, aggregations, and formatting.
-- Only output the final SQL code block, **no explanation** unless explicitly requested.
-- Always prefix tables with their source/target database from the context (e.g., `source_database.raw_orders`, `target_database.sales_orders`)
-- If the request is ambiguous, **clearly state what clarification is needed**.
+• Write syntactically valid SQL for the stated database engine.  
+• Prefix every table with the correct database owner
+  (e.g. `{source_db}.raw_orders`, `{target_db}.sales_orders`).  
+• Produce **one fenced SQL block per requested statement, in the order requested**.  
+• Add inline `-- comments` *only* when the user explicitly asks for explanations.  
 
-### Input Format:
 
-**Context:** = {context}
-**Source Database:** {source_db}
-**Target Database:** {target_db}
-**Transformation Logic:** {transformation_logic}
-**Query Request:** {query}
+***
+**Context:** {context}
 
-### Output Format:
+**Source DB alias:** {source_db}  
+**Target DB alias:** {target_db}  
+
+**Transformation logic / business rules (if relevant):**
+{transformation_logic}
+
+**User request (may contain several parts):**
+{query}
+***
+
+### Your output
+If the user's request needs *N* separate queries, return exactly *N* code fences like:
+
 ```sql
-    """
+-- Query 1 title (optional if explanation requested)
+SELECT …
+FROM {source_db}.…
+"""
 )
 
 VALIDATION_PROMPT = PromptTemplate(

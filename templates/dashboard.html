@@ -13,7 +13,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: rgb(24,28,36);
             min-height: 100vh;
             padding: 20px;
         }
@@ -362,7 +362,7 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #e5383b 0%, #a42427 100%);
             color: white;
             padding: 15px 25px;
             border-radius: 10px;
@@ -454,8 +454,11 @@
                         </div>
                     </div>
                 </div>
-                <a href="#" class="allure-report-link" id="allureReportLink">
-                    📊 View Detailed Allure Report
+                <a href="javascript:void(0)"
+                class="allure-report-link"
+                id="allureReportLink"
+                onclick="generateAllure()">
+                📊 View Detailed Allure Report
                 </a>
             </div>
 
@@ -474,60 +477,20 @@
     </div>
 
     <script>
-        // Mock data for demonstration
-        const mockResults = [
-            {
-                query: "SELECT COUNT(*) as total_records FROM employees WHERE department = 'Engineering'",
-                success: true,
-                executionTime: 0.45,
-                rowCount: 1,
-                result: [{ total_records: 245 }]
-            },
-            {
-                query: "SELECT emp_id, name, email FROM employees WHERE email IS NULL OR email = ''",
-                success: true,
-                executionTime: 1.23,
-                rowCount: 12,
-                result: [
-                    { emp_id: 101, name: 'John Doe', email: null },
-                    { emp_id: 205, name: 'Jane Smith', email: '' },
-                    { emp_id: 312, name: 'Bob Johnson', email: null }
-                ]
-            },
-            {
-                query: "SELECT * FROM non_existent_table",
-                success: false,
-                executionTime: 0.12,
-                error: "Table 'database.non_existent_table' doesn't exist"
-            },
-            {
-                query: "SELECT department, COUNT(*) as count FROM employees GROUP BY department HAVING COUNT(*) > 50",
-                success: true,
-                executionTime: 0.89,
-                rowCount: 3,
-                result: [
-                    { department: 'Engineering', count: 245 },
-                    { department: 'Sales', count: 78 },
-                    { department: 'Marketing', count: 56 }
-                ]
-            }
-        ];
+        
 
         // Function to fetch actual results from API
         async function fetchResults() {
             try {
                 const response = await fetch('/api/query-results');
                 const data = await response.json();
-                
-                // Using mock data for demonstration
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate loading
-                return mockResults;
+                await new Promise(resolve => setTimeout(resolve, 1000)); // optional delay for effect
+                return data;
             } catch (error) {
                 console.error('Error fetching results:', error);
-                return mockResults;
+                return [];
             }
         }
-
         // Function to render results
         function renderResults(results) {
             const container = document.getElementById('queryResults');
@@ -535,71 +498,44 @@
             let errorCount = 0;
             let totalExecutionTime = 0;
 
-            const resultsHTML = results.map(result => {
-                if (result.success) {
-                    successCount++;
-                } else {
-                    errorCount++;
-                }
-                totalExecutionTime += result.executionTime;
+            const resultsHTML = results.map((result, index) => {
+                const isSuccess = result.status === 'completed' && result.answer;
+                const executionTime = result.processing_time || 0;
+                const queryText = result.query || 'N/A';
+                const answer = result.answer || '';
+                const error = result.error || '';
+
+                if (isSuccess) successCount++;
+                else errorCount++;
+                totalExecutionTime += executionTime;
 
                 return `
                     <div class="query-result">
-                        <div class="query-header ${result.success ? 'success' : 'error'}">
+                        <div class="query-header ${isSuccess ? 'success' : 'error'}">
                             <div>
-                                <strong>Query ${results.indexOf(result) + 1}</strong>
-                                <div class="query-text">${result.query}</div>
+                                <strong>Query ${index + 1}</strong>
+                                <div class="query-text">${queryText}</div>
                             </div>
-                            <div class="status-badge ${result.success ? 'status-success' : 'status-error'}">
-                                ${result.success ? '✓ Success' : '✗ Error'}
+                            <div class="status-badge ${isSuccess ? 'status-success' : 'status-error'}">
+                                ${isSuccess ? '✓ Success' : '✗ Error'}
                             </div>
                         </div>
                         <div class="query-content">
-                            ${result.success ? `
+                            ${isSuccess ? `
                                 <div class="row-count">
-                                    📊 ${result.rowCount} row${result.rowCount !== 1 ? 's' : ''} returned
-                                    • ⏱️ ${result.executionTime}s execution time
+                                    🧠 Model: ${result.llm_model || 'N/A'} • ⏱️ ${executionTime}s • 🕒 ${new Date(result.timestamp).toLocaleString()}
                                 </div>
-                                ${result.result && result.result.length > 0 ? `
-                                    <table class="result-table">
-                                        <thead>
-                                            <tr>
-                                                ${Object.keys(result.result[0]).map(key => `<th>${key}</th>`).join('')}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${result.result.slice(0, 10).map(row => `
-                                                <tr>
-                                                    ${Object.values(row).map(value => `<td>${value === null ? '<em>NULL</em>' : value}</td>`).join('')}
-                                                </tr>
-                                            `).join('')}
-                                        </tbody>
-                                    </table>
-                                    ${result.result.length > 10 ? `<p><em>Showing first 10 rows of ${result.result.length} total rows</em></p>` : ''}
-                                ` : '<p>No data returned</p>'}
+                                <div class="query-text">${answer}</div>
                             ` : `
                                 <div class="error-message">
-                                    ❌ Error: ${result.error}
+                                    ❌ Error: ${error}
                                 </div>
                             `}
-                            <div class="actions">
-                                <button class="btn btn-primary" onclick="copyQuery('${result.query.replace(/'/g, "\\'")}')">
-                                    📋 Copy Query
-                                </button>
-                                ${result.success ? `
-                                    <button class="btn btn-success" onclick="exportResults(${results.indexOf(result)})">
-                                        📤 Export Results
-                                    </button>
-                                ` : `
-                                    <button class="btn btn-danger" onclick="retryQuery(${results.indexOf(result)})">
-                                        🔄 Retry Query
-                                    </button>
-                                `}
-                            </div>
                         </div>
                     </div>
                 `;
             }).join('');
+
 
             container.innerHTML = resultsHTML;
 
@@ -647,6 +583,37 @@
             // Implement retry functionality
             alert(`Retrying query ${index + 1}`);
         }
+
+
+        async function generateAllure() {
+            const link = document.getElementById('allureReportLink');
+            link.textContent = '⏳ Building Allure Report…';
+            link.style.pointerEvents = 'none';
+
+            try {
+                const res = await fetch('/api/generate-allure', { method: 'POST' });
+                const json = await res.json();
+
+                if (res.ok) {
+                    // ✅ ✅ ADD THIS HERE (inside the try block, after success)
+                    const allureStep = document.querySelectorAll('.pipeline-step')[3]; // "Allure Report Generated" step
+                    allureStep.querySelector('.step-icon').className = 'step-icon success';
+                    allureStep.querySelector('.step-icon').textContent = '✓';
+                    allureStep.querySelector('p').textContent = 'Report built – open tab launched';
+
+                    // open the report
+                    window.open('/allure-report/', '_blank');
+                } else {
+                    throw new Error(json.error || 'Unknown error');
+                }
+            } catch (err) {
+                alert('Failed to build Allure report: ' + err.message);
+            } finally {
+                link.textContent = '📊 View Detailed Allure Report';
+                link.style.pointerEvents = 'auto';
+            }
+        }
+
 
         // Initialize the page
         async function init() {

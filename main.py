@@ -11,14 +11,14 @@ source_config = {
     'host': 'localhost',
     'user': 'root',
     'password': 'password',
-    'database': 'source_database'
+    'database': 'source_db'
 }
 
 target_config = {
     'host': 'localhost',
     'user': 'root',
     'password': 'password',
-    'database': 'target_database'
+    'database': 'target_db'
 }
 
 transformation_logic_path = r'Schemas\transformation scripts.sql'

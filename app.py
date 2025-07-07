@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, send_file
+from flask import Flask, request, jsonify, render_template, send_file, session, send_from_directory
 from flask_cors import CORS
 import os
 import json
@@ -11,14 +11,15 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 import shutil
 import tempfile
+import subprocess
+
 import configparser
 config = configparser.ConfigParser()
 config_path = os.path.join(os.path.dirname(__file__), '..', 'config.ini')
 config.read(config_path)
 
-
-
 app = Flask(__name__)
+app.secret_key = 'your-secret-key-here'  # Add secret key for session management
 CORS(app)
 
 # Global variables
@@ -29,10 +30,17 @@ UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'sql', 'txt', 'json', 'csv'}
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
 
+ALLURE_RESULTS_DIR = 'allure-results'   # raw JSON produced by pytest
+ALLURE_REPORT_DIR = 'allure-report'     # generated HTML dashboard
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# Store query results globally for dashboard access
+query_results_store = []
+
+for _dir in (UPLOAD_FOLDER, ALLURE_RESULTS_DIR, ALLURE_REPORT_DIR):
+    os.makedirs(_dir, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -44,6 +52,31 @@ def initialize_rag():
         rag_instance = CodebaseRAG(DB_PATH)
     return rag_instance
 
+def generate_allure_report(force: bool = False):
+    """Generate/update Allure HTML report (ALLURE_REPORT_DIR) from ALLURE_RESULTS_DIR.
+
+    Parameters
+    ----------
+    force : bool
+        If True, force regeneration even if results are unchanged.
+    """
+    try:
+        # If report already exists and not forced, skip regeneration
+        if not force and os.path.exists(os.path.join(ALLURE_REPORT_DIR, 'index.html')):
+            return "Allure report already exists - skipped regeneration."
+
+        # Call Allure CLI
+        subprocess.run([
+            'allure', 'generate', ALLURE_RESULTS_DIR,
+            '-o', ALLURE_REPORT_DIR,
+            '--clean'
+        ], check=True)
+        return "Allure report generated successfully."
+    except FileNotFoundError:
+        raise RuntimeError("Allure CLI not found in PATH. Install Allure and ensure the 'allure' command is available.")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Allure generation failed: {e}")
+
 @app.route('/')
 def landing():
     return render_template('landing.html')
@@ -51,6 +84,13 @@ def landing():
 @app.route('/query')
 def query():
     return render_template('query_page.html')
+
+@app.route('/dashboard')
+def dashboard():
+    return render_template('dashboard.html')
+
+
+
 
 source_db_config = {
     'host': config.get('source_db', 'host', fallback='localhost'),
@@ -66,6 +106,46 @@ target_db_config = {
     'password': config.get('target_db', 'password', fallback='password'),
     'database': config.get('target_db', 'database', fallback='target_db')
 }
+
+############################################################
+# 🏷️ Allure static file serving
+############################################################
+
+@app.route('/allure-report/')
+def allure_root():
+    """Serve the Allure dashboard's landing page."""
+    index_path = os.path.join(ALLURE_REPORT_DIR, 'index.html')
+
+    # Auto‑generate the report if it doesn't exist
+    if not os.path.exists(index_path):
+        try:
+            generate_allure_report(force=False)
+        except RuntimeError as e:
+            return f"<h2>Allure report unavailable</h2><p>{e}</p>", 500
+
+    return send_file(index_path)
+
+
+@app.route('/allure-report/<path:resource>')
+def allure_static(resource):
+    """Serve JS/CSS/images used by the Allure dashboard."""
+    full_path = os.path.join(ALLURE_REPORT_DIR, resource)
+    if not os.path.exists(full_path):
+        return "Resource not found", 404
+    return send_from_directory(ALLURE_REPORT_DIR, resource)
+
+
+@app.route('/api/generate-allure', methods=['POST'])
+def api_generate_allure():
+    """REST endpoint to (re)generate the Allure report on‑demand."""
+    try:
+        message = generate_allure_report(force=True)
+        return jsonify({'message': message})
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 500
+
+
+
 
 rag = initialize_rag()
 rag.configure_databases(source_db_config, target_db_config)
@@ -148,7 +228,6 @@ def create_embeddings():
                 return jsonify({'error': 'No readable documents found'}), 400
             
             # Create embeddings from the documents
-
             temp_dir = tempfile.mkdtemp()
             try:
                 # Copy files to temp directory
@@ -189,16 +268,6 @@ def create_embeddings():
             'error': f'Server error: {str(e)}',
             'traceback': traceback.format_exc()
         }), 500
-        
-        # Set transformation logic if provided
-        # if transformation_path and os.path.exists(transformation_path):
-        #     rag.extract_transformation_logic(transformation_path)
-        
-        # # Create embeddings and store
-        # rag.create_embeddings_and_store()
-        # embeddings_created = True
-
-
 
 @app.route('/api/embeddings-status')
 def embeddings_status():
@@ -207,6 +276,7 @@ def embeddings_status():
 
 @app.route('/api/query', methods=['POST'])
 def query_rag():
+    global query_results_store
     try:
         data = request.json
         query = data.get('query')
@@ -270,13 +340,98 @@ def query_rag():
         print(result)
         end_time = time.time()
         
+        # Store query result for dashboard
+        query_result = {
+            'id': len(query_results_store) + 1,
+            'query': query,
+            'answer': result["text"],
+            'llm_model': model_name,
+            'processing_time': round(end_time - start_time, 2),
+            'timestamp': datetime.now().isoformat(),
+            'status': 'completed'
+        }
+        
+        query_results_store.append(query_result)
+        
         return jsonify({
             'answer': result["text"],
             'llm_model': model_name,
-            'processing_time': round(end_time - start_time, 2)
+            'processing_time': round(end_time - start_time, 2),
+            'dashboard_url': '/dashboard'  # Provide dashboard URL for frontend
         })
     except Exception as e:
+        # Store error result for dashboard
+        error_result = {
+            'id': len(query_results_store) + 1,
+            'query': query if 'query' in locals() else 'Unknown query',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat(),
+            'status': 'error'
+        }
+        query_results_store.append(error_result)
+        
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
+
+@app.route('/api/query-results')
+def get_query_results():
+    """API endpoint to get query results for dashboard"""
+    global query_results_store
+    return jsonify(query_results_store)
+
+@app.route('/api/clear-results', methods=['POST'])
+def clear_results():
+    """API endpoint to clear query results"""
+    global query_results_store
+    query_results_store = []
+    return jsonify({'message': 'Results cleared successfully'})
+
+@app.route('/api/execute-sql', methods=['POST'])
+def execute_sql():
+    """API endpoint to execute SQL queries extracted from RAG responses"""
+    try:
+        data = request.json
+        sql_query = data.get('sql_query')
+        result_id = data.get('result_id')
+        
+        if not sql_query:
+            return jsonify({'error': 'SQL query is required'}), 400
+        
+        rag = initialize_rag()
+        if not rag.source_db_config:
+            return jsonify({'error': 'Database configuration required'}), 400
+        
+        # Execute SQL query using ExecuteOutput
+        try:
+            # Create a temporary SQL file
+            temp_sql_file = tempfile.NamedTemporaryFile(mode='w', suffix='.sql', delete=False)
+            temp_sql_file.write(sql_query)
+            temp_sql_file.close()
+            
+            # Execute the query
+            executor = ExecuteOutput(script_filename=temp_sql_file.name)
+            execution_results = executor.execute_and_capture_results(rag.source_db_config)
+            
+            # Clean up temp file
+            os.unlink(temp_sql_file.name)
+            
+            # Update the stored query result with execution results
+            if result_id:
+                for result in query_results_store:
+                    if result['id'] == result_id:
+                        result['execution_results'] = execution_results
+                        result['executed'] = True
+                        break
+            
+            return jsonify({
+                'message': 'SQL query executed successfully',
+                'results': execution_results
+            })
+            
+        except Exception as e:
+            return jsonify({'error': f'SQL execution failed: {str(e)}'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/save-script', methods=['POST'])
 def save_script():
@@ -377,26 +532,6 @@ def execute_script():
     except Exception as e:
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
-# @app.route('/api/test-connection', methods=['POST'])
-# def test_connection():
-#     try:
-#         data = request.json
-#         config = data.get('config')
-        
-#         if not config:
-#             return jsonify({'error': 'Database configuration is required'}), 400
-        
-#         from connect_alchemy import MySQLConnection
-#         conn = MySQLConnection(**config)
-        
-#         if conn.connect():
-#             conn.close()
-#             return jsonify({'message': 'Connection successful'})
-#         else:
-#             return jsonify({'error': 'Connection failed'}), 400
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 500
-
 @app.route('/api/download-script/<filename>')
 def download_script(filename):
     try:
@@ -408,19 +543,6 @@ def download_script(filename):
     except Exception as e:
         return jsonify({'error': str(e)}), 404
 
-# @app.route('/api/list-scripts')
-# def list_scripts():
-#     try:
-#         results_dir = r"D:\New folder\scripts\results"
-#         if not os.path.exists(results_dir):
-#             return jsonify({'scripts': []})
-        
-#         scripts = [f for f in os.listdir(results_dir) if f.endswith('.sql')]
-#         return jsonify({'scripts': scripts})
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 500
-
-# Add missing utility functions for the frontend
 def showAlert(message, type='success'):
     return f'<div class="alert alert-{type}">{message}</div>'
 
