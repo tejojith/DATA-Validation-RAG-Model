@@ -83,18 +83,7 @@ ollama run deepseek-r1:8b
 ollama run mistral:7b
 
 ### 5. Configure your system
-Edit config.ini:
-
-[DATABASE]
-HOST = localhost
-USER = root
-PASSWORD = password
-PORT = 3306
-SOURCE_DATABASE = source_db
-TARGET_DATABASE = target_db
-
-[GITHUB]
-TOKEN = your_github_pat_here
+Edit config.ini accordingly.
 
 
 ⚙️ How It Works
