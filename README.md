@@ -115,11 +115,14 @@ Optionally execute the query against the configured MySQL DB and get results.
 
 🌐 Running the App
 
-Flask Web App
+1. Flask Web App
 
 python app.py
 
 Navigate to http://localhost:5000 to access the UI.
+
+2. Upload the schemas ( can use the ones in the schemas folder )
+
 
 📦 API Endpoints
 Endpoint	                    Method	    Description
